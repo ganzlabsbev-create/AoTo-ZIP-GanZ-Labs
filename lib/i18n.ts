@@ -35,6 +35,11 @@ export const dict = {
     build_log_title: "Log จาก deployment ล่าสุดที่ error",
     build_log_copy: "คัดลอก",
     build_log_copied: "คัดลอกแล้ว",
+    update_zip_title: "อัพเดต ZIP",
+    update_zip_desc: "อัพไฟล์ ZIP ใหม่มาแทนที่ของเดิม (ใช้โปรเจกต์เดิม ไม่สร้างใหม่)",
+    update_zip_button: "เลือกไฟล์ ZIP ใหม่",
+    update_zip_uploading: "กำลังอัพเดต...",
+    update_zip_success: "อัพเดต ZIP สำเร็จ กดปุ่ม Deploy อีกครั้งเพื่อใช้โค้ดใหม่",
   },
   en: {
     appName: "Project Uploader",
@@ -70,6 +75,11 @@ export const dict = {
     build_log_title: "Log from the latest failed deployment",
     build_log_copy: "Copy",
     build_log_copied: "Copied",
+    update_zip_title: "Update ZIP",
+    update_zip_desc: "Upload a new ZIP to replace the current one (same project, no new one created)",
+    update_zip_button: "Choose new ZIP file",
+    update_zip_uploading: "Updating...",
+    update_zip_success: "ZIP updated. Deploy again to use the new code.",
   },
 } as const;
 

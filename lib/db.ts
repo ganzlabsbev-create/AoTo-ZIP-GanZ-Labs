@@ -75,6 +75,29 @@ export async function getProject(id: string): Promise<ProjectRow | undefined> {
   return rows[0];
 }
 
+/**
+ * อัพเดต ZIP ของ project เดิม (id เดิม) แทนที่ของเก่า
+ * ไม่แตะ id/name/created_at — อัพเดตแค่ field ที่มาจากการวิเคราะห์ ZIP ใหม่
+ */
+export async function updateProjectZip(
+  id: string,
+  patch: Pick<
+    ProjectRow,
+    "framework" | "build_command" | "file_tree" | "has_package_json" | "zip_blob_url"
+  >
+): Promise<void> {
+  await ensureSchema();
+  await sql`
+    UPDATE projects
+    SET framework = ${patch.framework},
+        build_command = ${patch.build_command},
+        file_tree = ${patch.file_tree},
+        has_package_json = ${patch.has_package_json},
+        zip_blob_url = ${patch.zip_blob_url}
+    WHERE id = ${id}
+  `;
+}
+
 export async function listProjects(limit = 30): Promise<ProjectRow[]> {
   await ensureSchema();
   const { rows } = await sql<ProjectRow>`

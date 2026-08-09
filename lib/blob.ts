@@ -11,11 +11,16 @@ import { put, get } from "@vercel/blob";
  * store นี้ตั้งเป็น private (ปลอดภัยกว่า ไม่มี URL ที่เข้าถึงได้แบบ public)
  * เลยต้อง upload/download ด้วย access: 'private' ผ่าน SDK เท่านั้น
  * ห้ามใช้ fetch(url) ตรงๆ เพราะจะไม่มีสิทธิ์อ่านไฟล์
+ *
+ * ใช้ path แบบ deterministic (`zips/{projectId}.zip`, ไม่เติม random suffix)
+ * เพื่อให้เรียก storeZipBlob ซ้ำด้วย projectId เดิมตอน "อัพเดต ZIP"
+ * แล้วทับไฟล์เดิมที่ path เดียวกันได้เลย ไม่มี blob เก่าค้าง
  */
 export async function storeZipBlob(projectId: string, buffer: Buffer): Promise<string> {
   const { url } = await put(`zips/${projectId}.zip`, buffer, {
     access: "private",
     addRandomSuffix: false,
+    allowOverwrite: true,
   });
   return url;
 }
