@@ -40,8 +40,18 @@ export async function createRepoIfNeeded(repoName: string): Promise<{ owner: str
   const createPath = GITHUB_ORG ? `/orgs/${GITHUB_ORG}/repos` : "/user/repos";
   await gh(createPath, {
     method: "POST",
-    body: JSON.stringify({ name: repoName, private: true, auto_init: false }),
+    body: JSON.stringify({ name: repoName, private: true, auto_init: true }),
   });
+
+  // repo ใหม่ auto_init แล้วต้องรอ GitHub สร้าง commit แรก (README) เสร็จก่อน
+  // ไม่งั้น git/blobs อาจยังเจอ repo ว่างอยู่ (409 Git Repository is empty)
+  for (let i = 0; i < 5; i++) {
+    const ref = await fetch(`${API}/repos/${owner}/${repoName}/git/refs/heads/main`, {
+      headers: headers(),
+    });
+    if (ref.ok) break;
+    await new Promise((r) => setTimeout(r, 500));
+  }
 
   return { owner, repo: repoName };
 }
