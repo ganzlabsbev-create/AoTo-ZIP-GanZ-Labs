@@ -14,7 +14,7 @@
     "react-dom": "18.3.1",
     "adm-zip": "^0.5.14",
     "@vercel/postgres": "^0.10.0",
-    "@vercel/blob": "^0.23.4",
+    "@vercel/blob": "^2.6.1",
     "lucide-react": "^0.417.0",
     "nanoid": "^5.0.7"
   },
