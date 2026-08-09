@@ -32,6 +32,9 @@ export const dict = {
     file_structure: "โครงสร้างไฟล์",
     build_command: "คำสั่ง Build",
     no_zip_error: "กรุณาเลือกไฟล์ .zip เท่านั้น",
+    build_log_title: "Log จาก deployment ล่าสุดที่ error",
+    build_log_copy: "คัดลอก",
+    build_log_copied: "คัดลอกแล้ว",
   },
   en: {
     appName: "Project Uploader",
@@ -64,6 +67,9 @@ export const dict = {
     file_structure: "File structure",
     build_command: "Build command",
     no_zip_error: "Please choose a .zip file only",
+    build_log_title: "Log from the latest failed deployment",
+    build_log_copy: "Copy",
+    build_log_copied: "Copied",
   },
 } as const;
 

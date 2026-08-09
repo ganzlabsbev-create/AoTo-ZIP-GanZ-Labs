@@ -30,9 +30,12 @@ async function ensureSchema() {
       status TEXT NOT NULL CHECK (status IN ('pending','success','failed')),
       url TEXT,
       detail TEXT,
+      build_log TEXT,
       created_at TIMESTAMPTZ DEFAULT NOW()
     );
   `;
+  // เผื่อ table เดิมถูกสร้างไว้ก่อนหน้านี้โดยยังไม่มีคอลัมน์นี้
+  await sql`ALTER TABLE deployments ADD COLUMN IF NOT EXISTS build_log TEXT;`;
   initialized = true;
 }
 
@@ -54,6 +57,7 @@ export interface DeploymentRow {
   status: "pending" | "success" | "failed";
   url: string | null;
   detail: string | null;
+  build_log: string | null;
   created_at: string;
 }
 
@@ -79,24 +83,27 @@ export async function listProjects(limit = 30): Promise<ProjectRow[]> {
   return rows;
 }
 
-export async function insertDeployment(row: Omit<DeploymentRow, "created_at">) {
+export async function insertDeployment(
+  row: Omit<DeploymentRow, "created_at" | "build_log"> & { build_log?: string | null }
+) {
   await ensureSchema();
   await sql`
-    INSERT INTO deployments (id, project_id, target, status, url, detail)
-    VALUES (${row.id}, ${row.project_id}, ${row.target}, ${row.status}, ${row.url}, ${row.detail})
+    INSERT INTO deployments (id, project_id, target, status, url, detail, build_log)
+    VALUES (${row.id}, ${row.project_id}, ${row.target}, ${row.status}, ${row.url}, ${row.detail}, ${row.build_log ?? null})
   `;
 }
 
 export async function updateDeployment(
   id: string,
-  patch: Partial<Pick<DeploymentRow, "status" | "url" | "detail">>
+  patch: Partial<Pick<DeploymentRow, "status" | "url" | "detail" | "build_log">>
 ) {
   await ensureSchema();
   await sql`
     UPDATE deployments
     SET status = COALESCE(${patch.status ?? null}, status),
         url = ${patch.url ?? null},
-        detail = ${patch.detail ?? null}
+        detail = ${patch.detail ?? null},
+        build_log = ${patch.build_log ?? null}
     WHERE id = ${id}
   `;
 }

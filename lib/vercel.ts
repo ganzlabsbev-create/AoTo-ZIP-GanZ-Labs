@@ -85,6 +85,76 @@ export async function deployToVercel(
   return { id: data.id, url: data.url, readyState: data.readyState };
 }
 
+/**
+ * Error พิเศษที่แนบ build log เต็มมาด้วย (แยกจาก message สั้นๆ)
+ * ให้ route.ts อ่าน err.buildLog ต่อได้โดยไม่ต้อง parse message
+ */
+export class VercelDeploymentError extends Error {
+  buildLog?: string;
+  constructor(message: string, buildLog?: string) {
+    super(message);
+    this.name = "VercelDeploymentError";
+    this.buildLog = buildLog;
+  }
+}
+
+/**
+ * ดึง build log เต็มจาก Vercel Events API
+ * โครงสร้าง response ของ endpoint นี้ไม่คงที่ 100% ระหว่างเวอร์ชัน/ประเภท event
+ * เลย log raw response ไว้ debug แล้วใช้ extractEventText ที่ทนทานกับ field ที่ขาด/ไม่ตรง
+ */
+export async function getDeploymentBuildLog(deploymentId: string): Promise<string> {
+  try {
+    const res = await fetch(
+      withTeam(`${API}/v3/deployments/${deploymentId}/events?builds=1&limit=-1`),
+      { headers: authHeaders() }
+    );
+
+    if (!res.ok) {
+      const text = await res.text();
+      return `(ดึง build log ไม่สำเร็จ: HTTP ${res.status} ${text})`;
+    }
+
+    const data = await res.json();
+
+    // log raw response ออกมาดูโครงสร้างจริงก่อน (ช่วย debug ตอน field ไม่ตรงตามคาด)
+    console.log("[vercel] raw build log events:", JSON.stringify(data)?.slice(0, 5000));
+
+    const events: any[] = Array.isArray(data) ? data : data?.events ?? [];
+
+    const lines = events
+      .map((ev) => extractEventText(ev))
+      .filter((line): line is string => Boolean(line && line.trim().length > 0));
+
+    if (lines.length === 0) {
+      return "(ไม่มี build log จาก Vercel สำหรับ deployment นี้)";
+    }
+
+    return lines.join("\n");
+  } catch (err: any) {
+    return `(ดึง build log ไม่สำเร็จ: ${String(err?.message || err)})`;
+  }
+}
+
+/** ดึงข้อความ log จาก event object โดยลองหลาย field เผื่อ response ไม่ตรงตามที่คาดไว้ */
+function extractEventText(ev: any): string | null {
+  if (!ev || typeof ev !== "object") return null;
+
+  const candidates = [
+    ev.payload?.text,
+    ev.text,
+    ev.payload?.log,
+    ev.payload?.message,
+    ev.message,
+  ];
+
+  for (const c of candidates) {
+    if (typeof c === "string" && c.length > 0) return c;
+  }
+
+  return null;
+}
+
 /** Poll สถานะ deployment จนกว่าจะ READY หรือ ERROR (timeout กันไว้ที่ ~3 นาที) */
 export async function pollDeploymentUntilReady(deploymentId: string): Promise<VercelDeployResult> {
   const maxAttempts = 36; // 36 * 5s = 180s
@@ -98,7 +168,11 @@ export async function pollDeploymentUntilReady(deploymentId: string): Promise<Ve
       return { id: data.id, url: data.url, readyState: data.readyState };
     }
     if (data.readyState === "ERROR" || data.readyState === "CANCELED") {
-      throw new Error(`Deployment ${data.readyState}: ${data.errorMessage ?? "unknown error"}`);
+      const buildLog = await getDeploymentBuildLog(deploymentId);
+      throw new VercelDeploymentError(
+        `Deployment ${data.readyState}: ${data.errorMessage ?? "unknown error"}`,
+        buildLog
+      );
     }
 
     await new Promise((r) => setTimeout(r, 5000));
