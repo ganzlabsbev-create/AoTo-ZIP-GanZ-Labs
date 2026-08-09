@@ -40,30 +40,44 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const detection = detectFramework(extractDir, extracted.packageJson);
-  const projectName = file.name.replace(/\.zip$/i, "");
+  try {
+    const detection = detectFramework(extractDir, extracted.packageJson);
+    const projectName = file.name.replace(/\.zip$/i, "");
 
-  // เก็บ ZIP ต้นฉบับไว้ที่ Vercel Blob กลาง เพื่อให้ request อื่น (ตอนกด deploy) ดึงมาแตกใหม่ได้
-  const zipBlobUrl = await storeZipBlob(projectId, buffer);
+    // เก็บ ZIP ต้นฉบับไว้ที่ Vercel Blob กลาง เพื่อให้ request อื่น (ตอนกด deploy) ดึงมาแตกใหม่ได้
+    const zipBlobUrl = await storeZipBlob(projectId, buffer);
 
-  await insertProject({
-    id: projectId,
-    name: projectName,
-    framework: detection.framework,
-    build_command: detection.buildCommand,
-    file_tree: JSON.stringify(extracted.tree),
-    has_package_json: Boolean(extracted.packageJson),
-    zip_blob_url: zipBlobUrl,
-  });
+    await insertProject({
+      id: projectId,
+      name: projectName,
+      framework: detection.framework,
+      build_command: detection.buildCommand,
+      file_tree: JSON.stringify(extracted.tree),
+      has_package_json: Boolean(extracted.packageJson),
+      zip_blob_url: zipBlobUrl,
+    });
 
-  return NextResponse.json({
-    ok: true,
-    projectId,
-    name: projectName,
-    tree: extracted.tree,
-    fileCount: extracted.fileCount,
-    framework: detection.framework,
-    buildCommand: detection.buildCommand,
-    packageJson: extracted.packageJson,
-  });
+    return NextResponse.json({
+      ok: true,
+      projectId,
+      name: projectName,
+      tree: extracted.tree,
+      fileCount: extracted.fileCount,
+      framework: detection.framework,
+      buildCommand: detection.buildCommand,
+      packageJson: extracted.packageJson,
+    });
+  } catch (err: any) {
+    // กันไม่ให้ response หลุดออกไปแบบไม่มี body (ทำให้ฝั่ง client เจอ
+    // "Unexpected end of JSON input" ตอน res.json() โดยไม่รู้สาเหตุจริง)
+    console.error("upload_failed:", err);
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "upload_failed",
+        detail: String(err?.message || err),
+      },
+      { status: 500 }
+    );
+  }
 }
