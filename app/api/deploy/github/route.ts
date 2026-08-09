@@ -52,7 +52,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, url });
   } catch (err: any) {
     const detail = String(err?.message || err);
-    await updateDeployment(deploymentId, { status: "failed", url: null, detail });
-    return NextResponse.json({ ok: false, error: "push_failed", detail }, { status: 500 });
+    // GitHub API error text ที่มีอยู่แล้วก็ถือเป็น "log เต็ม" ได้เลย เก็บซ้ำไว้ใน build_log
+    // เพื่อให้ frontend ใช้ panel เดียวกับฝั่ง Vercel แสดงผลได้
+    await updateDeployment(deploymentId, { status: "failed", url: null, detail, build_log: detail });
+    return NextResponse.json({ ok: false, error: "push_failed", detail, buildLog: detail }, { status: 500 });
   }
 }
