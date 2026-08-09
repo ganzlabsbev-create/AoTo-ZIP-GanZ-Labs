@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -13,6 +13,7 @@ import {
   Folder,
   File as FileIcon,
   Copy,
+  RefreshCw,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -99,6 +100,13 @@ export default function ProjectDetailPage() {
   const [buildLog, setBuildLog] = useState<string | null>(null);
   const [buildLogSource, setBuildLogSource] = useState<BuildLogSource>(null);
 
+  // อัพเดต ZIP ทับของเดิม (project id เดิม)
+  const updateZipInputRef = useRef<HTMLInputElement>(null);
+  const [updateZipStatus, setUpdateZipStatus] = useState<"idle" | "loading" | "success" | "error">(
+    "idle"
+  );
+  const [updateZipError, setUpdateZipError] = useState<string | null>(null);
+
   useEffect(() => {
     fetch(`/api/projects/${params.id}`)
       .then((r) => r.json())
@@ -175,6 +183,49 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleUpdateZip(file: File) {
+    setUpdateZipStatus("loading");
+    setUpdateZipError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/projects/${params.id}/update-zip`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        const msg = [data.error, data.detail].filter(Boolean).join(": ");
+        throw new Error(msg || "update_zip_failed");
+      }
+
+      // อัพเดตข้อมูลโปรเจกต์ในหน้าให้ตรงกับ ZIP ใหม่ (id/name เดิม ไม่เปลี่ยน)
+      setProject((prev: any) => ({
+        ...prev,
+        framework: data.framework,
+        build_command: data.buildCommand,
+        file_tree: data.tree,
+      }));
+
+      // ผลลัพธ์ deploy เดิม (ถ้ามี) อ้างอิงโค้ดเก่า ล้างสถานะทิ้งเพื่อไม่ให้เข้าใจผิด
+      // (ค่า domainName / repoName ที่กรอกไว้ไม่แตะ ใช้ค่าเดิมได้เลย)
+      setVercelStatus("idle");
+      setVercelUrl(null);
+      setVercelError(null);
+      setGithubStatus("idle");
+      setGithubUrl(null);
+      setGithubError(null);
+      setBuildLog(null);
+      setBuildLogSource(null);
+
+      setUpdateZipStatus("success");
+      setTimeout(() => setUpdateZipStatus("idle"), 3000);
+    } catch (err: any) {
+      setUpdateZipError(String(err?.message || err));
+      setUpdateZipStatus("error");
+    }
+  }
+
   if (!project) {
     return (
       <main className="mx-auto flex min-h-screen max-w-md items-center justify-center px-4">
@@ -216,6 +267,50 @@ export default function ProjectDetailPage() {
         <div className="max-h-56 overflow-y-auto">
           <TreeView nodes={project.file_tree} />
         </div>
+      </section>
+
+      {/* อัพเดต ZIP ทับของเดิม (project id เดิม, ไม่สร้างใหม่) */}
+      <section className="mb-6 rounded-xl border border-base-border bg-base-surface p-4">
+        <p className="mb-1 text-xs font-medium text-ink-dim">{t("update_zip_title")}</p>
+        <p className="mb-3 text-[11px] text-ink-faint">{t("update_zip_desc")}</p>
+
+        <button
+          onClick={() => updateZipInputRef.current?.click()}
+          disabled={updateZipStatus === "loading"}
+          className="flex w-full items-center justify-center gap-2 rounded-lg border border-base-border bg-base-surface2 py-3 text-sm font-medium text-ink disabled:opacity-40 active:scale-[0.98] transition"
+        >
+          {updateZipStatus === "loading" ? (
+            <>
+              <Loader2 size={15} className="animate-spin" /> {t("update_zip_uploading")}
+            </>
+          ) : (
+            <>
+              <RefreshCw size={15} strokeWidth={2} /> {t("update_zip_button")}
+            </>
+          )}
+        </button>
+        <input
+          ref={updateZipInputRef}
+          type="file"
+          accept=".zip"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) handleUpdateZip(file);
+            e.target.value = "";
+          }}
+        />
+
+        {updateZipStatus === "success" && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-accent-mint">
+            <CheckCircle2 size={13} /> {t("update_zip_success")}
+          </p>
+        )}
+        {updateZipStatus === "error" && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-accent-red">
+            <XCircle size={13} /> {updateZipError}
+          </p>
+        )}
       </section>
 
       {/* Vercel deploy */}
