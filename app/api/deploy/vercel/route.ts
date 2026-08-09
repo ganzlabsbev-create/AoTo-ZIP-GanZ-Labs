@@ -53,7 +53,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, url });
   } catch (err: any) {
     const detail = String(err?.message || err);
-    await updateDeployment(deploymentId, { status: "failed", url: null, detail });
-    return NextResponse.json({ ok: false, error: "deploy_failed", detail }, { status: 500 });
+    const buildLog: string | null = err?.buildLog ?? null;
+    await updateDeployment(deploymentId, { status: "failed", url: null, detail, build_log: buildLog });
+    return NextResponse.json({ ok: false, error: "deploy_failed", detail, buildLog }, { status: 500 });
   }
 }
