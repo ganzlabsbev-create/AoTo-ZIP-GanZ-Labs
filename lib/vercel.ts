@@ -27,7 +27,7 @@ async function uploadFile(filePath: string, content: Buffer): Promise<string> {
       "Content-Length": String(content.length),
       "x-vercel-digest": sha,
     },
-    body: content,
+    body: content as unknown as BodyInit,
   });
 
   if (!res.ok && res.status !== 409) {
