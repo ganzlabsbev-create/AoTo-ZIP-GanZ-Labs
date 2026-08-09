@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { KeyRound, Loader2 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
@@ -8,7 +8,7 @@ import LanguageToggle from "@/components/LanguageToggle";
 
 export const dynamic = "force-dynamic";
 
-export default function LoginPage() {
+function LoginForm() {
   const { t } = useLang();
   const router = useRouter();
   const params = useSearchParams();
@@ -76,5 +76,13 @@ export default function LoginPage() {
         </form>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={null}>
+      <LoginForm />
+    </Suspense>
   );
 }
