@@ -12,6 +12,7 @@ import {
   ExternalLink,
   Folder,
   File as FileIcon,
+  Copy,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -39,6 +40,43 @@ function TreeView({ nodes, depth = 0 }: { nodes: TreeNode[]; depth?: number }) {
 }
 
 type DeployStatus = "idle" | "loading" | "success" | "error";
+type BuildLogSource = "vercel" | "github" | null;
+
+/** กล่องแสดง build log เต็มของ deployment ล่าสุดที่ error (vercel หรือ github ก็ใช้ตัวเดียวกัน) */
+function BuildLogPanel({ log, source }: { log: string; source: BuildLogSource }) {
+  const { t } = useLang();
+  const [copied, setCopied] = useState(false);
+
+  async function handleCopy() {
+    try {
+      await navigator.clipboard.writeText(log);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // เผื่อ clipboard permission ไม่ผ่าน ไม่ต้องทำอะไรต่อ
+    }
+  }
+
+  return (
+    <section className="mt-4 rounded-xl border border-base-border bg-base-surface p-4">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <p className="text-[11px] uppercase tracking-wide text-ink-faint">
+          {t("build_log_title")}
+          {source === "vercel" ? " · Vercel" : source === "github" ? " · GitHub" : ""}
+        </p>
+        <button
+          onClick={handleCopy}
+          className="flex shrink-0 items-center gap-1 rounded-md border border-base-border bg-base-surface2 px-2 py-1 text-[11px] text-ink-dim active:scale-95 transition"
+        >
+          <Copy size={12} /> {copied ? t("build_log_copied") : t("build_log_copy")}
+        </button>
+      </div>
+      <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-base-bg p-3 font-mono text-xs text-ink-dim">
+        {log}
+      </pre>
+    </section>
+  );
+}
 
 export default function ProjectDetailPage() {
   const { t } = useLang();
@@ -56,6 +94,10 @@ export default function ProjectDetailPage() {
   const [githubStatus, setGithubStatus] = useState<DeployStatus>("idle");
   const [githubUrl, setGithubUrl] = useState<string | null>(null);
   const [githubError, setGithubError] = useState<string | null>(null);
+
+  // build log เต็มของ deployment ล่าสุดที่ error (ไม่ว่าจะเป็น vercel หรือ github)
+  const [buildLog, setBuildLog] = useState<string | null>(null);
+  const [buildLogSource, setBuildLogSource] = useState<BuildLogSource>(null);
 
   useEffect(() => {
     fetch(`/api/projects/${params.id}`)
@@ -93,7 +135,13 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ projectId: params.id, domainName }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.detail || data.error);
+      if (!data.ok) {
+        if (data.buildLog) {
+          setBuildLog(data.buildLog);
+          setBuildLogSource("vercel");
+        }
+        throw new Error(data.detail || data.error);
+      }
       setVercelUrl(data.url);
       setVercelStatus("success");
     } catch (err: any) {
@@ -112,7 +160,13 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ projectId: params.id, repoName }),
       });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.detail || data.error);
+      if (!data.ok) {
+        if (data.buildLog) {
+          setBuildLog(data.buildLog);
+          setBuildLogSource("github");
+        }
+        throw new Error(data.detail || data.error);
+      }
       setGithubUrl(data.url);
       setGithubStatus("success");
     } catch (err: any) {
@@ -254,6 +308,8 @@ export default function ProjectDetailPage() {
           </p>
         )}
       </section>
+
+      {buildLog && <BuildLogPanel log={buildLog} source={buildLogSource} />}
     </main>
   );
 }
