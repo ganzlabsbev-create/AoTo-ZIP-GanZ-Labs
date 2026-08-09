@@ -27,7 +27,10 @@ export default function UploadZone({
       formData.append("file", file);
       const res = await fetch("/api/upload", { method: "POST", body: formData });
       const data = await res.json();
-      if (!data.ok) throw new Error(data.error || "upload_failed");
+      if (!data.ok) {
+        const msg = [data.error, data.detail].filter(Boolean).join(": ");
+        throw new Error(msg || "upload_failed");
+      }
       onUploaded(data);
     } catch (err: any) {
       setError(String(err?.message || err));
