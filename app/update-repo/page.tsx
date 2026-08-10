@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -9,12 +9,12 @@ import {
   CheckCircle2,
   XCircle,
   ExternalLink,
-  Trash2,
-  RotateCcw,
   GitBranch,
   Github,
   ChevronRight,
   Pencil,
+  Folder,
+  File as FileIcon,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -151,6 +151,17 @@ export default function UpdateRepoPage() {
   const replaceCount = selectedReplace.size;
   const deleteCount = selectedDelete.size;
   const totalChanges = addCount + replaceCount + deleteCount;
+
+  // รวม 3 หมวดเป็นต้นไม้เดียว (โฟลเดอร์สีม่วง, ไฟล์สีตามสถานะ) — คำนวณใหม่เฉพาะตอน diff เปลี่ยน
+  const diffTree = useMemo(() => {
+    if (!diff) return [];
+    const items: { path: string; status: DiffStatus }[] = [
+      ...diff.modified.map((p) => ({ path: p, status: "modified" as DiffStatus })),
+      ...diff.zipOnly.map((p) => ({ path: p, status: "add" as DiffStatus })),
+      ...diff.repoOnly.map((p) => ({ path: p, status: "unchanged" as DiffStatus })),
+    ];
+    return buildDiffTree(items);
+  }, [diff]);
 
   async function handleCommit() {
     if (!selectedFullName || !zipBlobUrl || totalChanges === 0) return;
@@ -330,78 +341,49 @@ export default function UpdateRepoPage() {
         </section>
       )}
 
-      {/* Step 3: หมวดไฟล์ + checkbox */}
+      {/* Step 3: ต้นไม้ไฟล์รวม (โฟลเดอร์สีม่วง, ไฟล์สีตามสถานะ, ติ๊กอยู่ขวา) */}
       {diff && (
         <>
-          <DiffGroup
-            title={t("group_modified_title")}
-            color="orange"
-            paths={diff.modified}
-            selected={selectedReplace}
-            onToggle={(p) => setSelectedReplace((s) => toggle(s, p))}
-            onToggleAll={() => toggleAllOfGroup(diff.modified, selectedReplace, setSelectedReplace)}
-            selectAllLabel={t("select_all")}
-            deselectAllLabel={t("deselect_all")}
-            emptyLabel={t("group_empty")}
-          />
-
-          <DiffGroup
-            title={t("group_added_title")}
-            color="green"
-            paths={diff.zipOnly}
-            selected={selectedAdd}
-            onToggle={(p) => setSelectedAdd((s) => toggle(s, p))}
-            onToggleAll={() => toggleAllOfGroup(diff.zipOnly, selectedAdd, setSelectedAdd)}
-            selectAllLabel={t("select_all")}
-            deselectAllLabel={t("deselect_all")}
-            emptyLabel={t("group_empty")}
-          />
-
           <section className="mb-5 rounded-xl border border-base-border bg-base-surface p-4">
-            <p className="mb-3 flex items-center gap-2 text-xs font-medium text-ink-dim">
-              <span className="h-2 w-2 shrink-0 rounded-full bg-ink-faint" /> {t("group_removed_title")}
-            </p>
-            {diff.repoOnly.length === 0 ? (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <p className="text-xs font-medium text-ink-dim">{t("diff_tree_title")}</p>
+              <div className="ml-auto flex flex-wrap gap-2">
+                {diff.modified.length > 0 && (
+                  <button
+                    onClick={() => toggleAllOfGroup(diff.modified, selectedReplace, setSelectedReplace)}
+                    className="flex items-center gap-1.5 rounded-md border border-accent-amber/30 bg-accent-amber/10 px-2.5 py-1.5 text-[11px] font-medium text-accent-amber active:scale-95 transition"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-amber" />
+                    {diff.modified.every((p) => selectedReplace.has(p)) ? t("deselect_all") : t("select_all")}
+                  </button>
+                )}
+                {diff.zipOnly.length > 0 && (
+                  <button
+                    onClick={() => toggleAllOfGroup(diff.zipOnly, selectedAdd, setSelectedAdd)}
+                    className="flex items-center gap-1.5 rounded-md border border-accent-mint/30 bg-accent-mint/10 px-2.5 py-1.5 text-[11px] font-medium text-accent-mint active:scale-95 transition"
+                  >
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-accent-mint" />
+                    {diff.zipOnly.every((p) => selectedAdd.has(p)) ? t("deselect_all") : t("select_all")}
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {repoEmpty && <p className="mb-3 text-xs text-ink-faint">{t("repo_empty_hint")}</p>}
+
+            {diffTree.length === 0 ? (
               <p className="text-xs text-ink-faint">{t("group_empty")}</p>
             ) : (
-              <div className="max-h-64 space-y-0.5 overflow-y-auto">
-                {diff.repoOnly.map((p) => {
-                  const marked = selectedDelete.has(p);
-                  return (
-                    <div
-                      key={p}
-                      className={`flex items-center justify-between gap-2 rounded-md px-2 py-1.5 ${
-                        marked ? "bg-accent-red/10" : ""
-                      }`}
-                    >
-                      <span
-                        className={`min-w-0 flex-1 truncate font-mono text-xs ${
-                          marked ? "text-accent-red line-through" : "text-ink-dim"
-                        }`}
-                      >
-                        {p}
-                      </span>
-                      <button
-                        onClick={() => setSelectedDelete((s) => toggle(s, p))}
-                        className={`flex shrink-0 items-center gap-1 rounded-md border px-2 py-1 text-[11px] transition active:scale-95 ${
-                          marked
-                            ? "border-accent-red/30 bg-accent-red/10 text-accent-red"
-                            : "border-base-border bg-base-surface2 text-ink-faint"
-                        }`}
-                      >
-                        {marked ? (
-                          <>
-                            <RotateCcw size={11} /> {t("unmark_delete")}
-                          </>
-                        ) : (
-                          <>
-                            <Trash2 size={11} /> {t("mark_delete")}
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  );
-                })}
+              <div className="max-h-[28rem] overflow-y-auto">
+                <DiffTreeView
+                  nodes={diffTree}
+                  selectedReplace={selectedReplace}
+                  selectedAdd={selectedAdd}
+                  selectedDelete={selectedDelete}
+                  onToggleReplace={(p) => setSelectedReplace((s) => toggle(s, p))}
+                  onToggleAdd={(p) => setSelectedAdd((s) => toggle(s, p))}
+                  onToggleDelete={(p) => setSelectedDelete((s) => toggle(s, p))}
+                />
               </div>
             )}
           </section>
@@ -471,63 +453,152 @@ export default function UpdateRepoPage() {
   );
 }
 
-function DiffGroup({
-  title,
-  color,
-  paths,
-  selected,
-  onToggle,
-  onToggleAll,
-  selectAllLabel,
-  deselectAllLabel,
-  emptyLabel,
+type DiffStatus = "modified" | "add" | "unchanged";
+
+interface DiffTreeNode {
+  name: string;
+  fullPath: string;
+  type: "dir" | "file";
+  status?: DiffStatus;
+  children?: DiffTreeNode[];
+}
+
+/** รวม path จาก 3 หมวด (modified/add/unchanged) เป็นต้นไม้เดียว โฟลเดอร์ก่อน ไฟล์ทีหลัง เรียงตามชื่อ */
+function buildDiffTree(items: { path: string; status: DiffStatus }[]): DiffTreeNode[] {
+  const root: DiffTreeNode[] = [];
+
+  for (const item of items) {
+    const segments = item.path.split("/").filter(Boolean);
+    let level = root;
+    let acc = "";
+
+    segments.forEach((seg, idx) => {
+      acc = acc ? `${acc}/${seg}` : seg;
+      const isFile = idx === segments.length - 1;
+      let node = level.find((n) => n.name === seg && n.type === (isFile ? "file" : "dir"));
+      if (!node) {
+        node = isFile
+          ? { name: seg, fullPath: acc, type: "file", status: item.status }
+          : { name: seg, fullPath: acc, type: "dir", children: [] };
+        level.push(node);
+      }
+      if (!isFile) level = node.children!;
+    });
+  }
+
+  sortDiffTree(root);
+  return root;
+}
+
+function sortDiffTree(nodes: DiffTreeNode[]) {
+  nodes.sort((a, b) => {
+    if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+    return a.name.localeCompare(b.name);
+  });
+  nodes.forEach((n) => n.children && sortDiffTree(n.children));
+}
+
+/**
+ * ต้นไม้ไฟล์แบบใหญ่/ชัด สำหรับหน้าอัพเดตไฟล์เข้า repo โดยเฉพาะ (แยกจาก TreeView ของหน้า deploy zip เดิม)
+ * โฟลเดอร์ = สีม่วง (accent-indigo) ไม่มี checkbox
+ * ไฟล์ = สีตามสถานะ ทั้งไอคอนและชื่อ, checkbox อยู่ขวาสุดของแถว
+ *   - 🟠 modified (อยู่ทั้งใน repo และ zip) ติ๊ก = แทนที่
+ *   - 🟢 add (มีแค่ใน zip) ติ๊ก = เพิ่มใหม่
+ *   - เทา unchanged (มีแค่ใน repo) ติ๊ก = ทำเครื่องหมายลบ → กลายเป็นสีแดงขีดฆ่า
+ */
+function DiffTreeView({
+  nodes,
+  depth = 0,
+  selectedReplace,
+  selectedAdd,
+  selectedDelete,
+  onToggleReplace,
+  onToggleAdd,
+  onToggleDelete,
 }: {
-  title: string;
-  color: "orange" | "green";
-  paths: string[];
-  selected: Set<string>;
-  onToggle: (path: string) => void;
-  onToggleAll: () => void;
-  selectAllLabel: string;
-  deselectAllLabel: string;
-  emptyLabel: string;
+  nodes: DiffTreeNode[];
+  depth?: number;
+  selectedReplace: Set<string>;
+  selectedAdd: Set<string>;
+  selectedDelete: Set<string>;
+  onToggleReplace: (path: string) => void;
+  onToggleAdd: (path: string) => void;
+  onToggleDelete: (path: string) => void;
 }) {
-  const dotClass = color === "orange" ? "bg-accent-amber" : "bg-accent-mint";
-  const allSelected = paths.length > 0 && paths.every((p) => selected.has(p));
-
   return (
-    <section className="mb-5 rounded-xl border border-base-border bg-base-surface p-4">
-      <div className="mb-3 flex items-center justify-between gap-2">
-        <p className="flex items-center gap-2 text-xs font-medium text-ink-dim">
-          <span className={`h-2 w-2 shrink-0 rounded-full ${dotClass}`} /> {title}
-        </p>
-        {paths.length > 0 && (
-          <button
-            onClick={onToggleAll}
-            className="shrink-0 rounded-md border border-base-border bg-base-surface2 px-2 py-1 text-[11px] text-ink-dim active:scale-95 transition"
-          >
-            {allSelected ? deselectAllLabel : selectAllLabel}
-          </button>
-        )}
-      </div>
+    <div style={{ paddingLeft: depth ? 16 : 0 }}>
+      {nodes.map((n) => {
+        if (n.type === "dir") {
+          return (
+            <div key={n.fullPath}>
+              <div className="flex items-center gap-2 py-2">
+                <Folder size={16} strokeWidth={2} className="shrink-0 text-accent-indigo" />
+                <span className="truncate font-mono text-sm font-medium text-accent-indigo">{n.name}</span>
+              </div>
+              {n.children && n.children.length > 0 && (
+                <DiffTreeView
+                  nodes={n.children}
+                  depth={depth + 1}
+                  selectedReplace={selectedReplace}
+                  selectedAdd={selectedAdd}
+                  selectedDelete={selectedDelete}
+                  onToggleReplace={onToggleReplace}
+                  onToggleAdd={onToggleAdd}
+                  onToggleDelete={onToggleDelete}
+                />
+              )}
+            </div>
+          );
+        }
 
-      {paths.length === 0 ? (
-        <p className="text-xs text-ink-faint">{emptyLabel}</p>
-      ) : (
-        <div className="max-h-64 space-y-0.5 overflow-y-auto">
-          {paths.map((p) => (
-            <label key={p} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5">
-              <input
-                type="checkbox"
-                checked={selected.has(p)}
-                onChange={() => onToggle(p)}
-                className="shrink-0 accent-accent-indigo"
-              />
-              <span className="min-w-0 flex-1 truncate font-mono text-xs text-ink-dim">{p}</span>
-            </label>
-          ))}
-        </div>
-      )}
-    </section>
+        const isMarkedDelete = n.status === "unchanged" && selectedDelete.has(n.fullPath);
+        const checked =
+          n.status === "modified"
+            ? selectedReplace.has(n.fullPath)
+            : n.status === "add"
+              ? selectedAdd.has(n.fullPath)
+              : selectedDelete.has(n.fullPath);
+
+        const colorClass =
+          n.status === "modified"
+            ? "text-accent-amber"
+            : n.status === "add"
+              ? "text-accent-mint"
+              : isMarkedDelete
+                ? "text-accent-red line-through"
+                : "text-ink-dim";
+
+        const accentClass =
+          n.status === "modified"
+            ? "accent-accent-amber"
+            : n.status === "add"
+              ? "accent-accent-mint"
+              : "accent-accent-red";
+
+        function handleToggle() {
+          if (n.status === "modified") onToggleReplace(n.fullPath);
+          else if (n.status === "add") onToggleAdd(n.fullPath);
+          else onToggleDelete(n.fullPath);
+        }
+
+        return (
+          <label
+            key={n.fullPath}
+            className={`flex cursor-pointer items-center gap-2 rounded-lg py-2.5 pl-1 pr-2 transition ${
+              isMarkedDelete ? "bg-accent-red/5" : checked ? "bg-base-surface2" : ""
+            }`}
+          >
+            <FileIcon size={16} strokeWidth={2} className={`shrink-0 ${colorClass}`} />
+            <span className={`min-w-0 flex-1 truncate font-mono text-sm ${colorClass}`}>{n.name}</span>
+            <input
+              type="checkbox"
+              checked={checked}
+              onChange={handleToggle}
+              className={`h-[18px] w-[18px] shrink-0 ${accentClass}`}
+            />
+          </label>
+        );
+      })}
+    </div>
   );
 }
