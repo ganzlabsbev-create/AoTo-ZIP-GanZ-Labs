@@ -12,6 +12,9 @@ import {
   Trash2,
   RotateCcw,
   GitBranch,
+  Github,
+  ChevronRight,
+  Pencil,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -202,7 +205,7 @@ export default function UpdateRepoPage() {
       <h1 className="mb-1 font-display text-xl font-semibold text-ink">{t("update_repo_page_title")}</h1>
       <p className="mb-6 text-sm text-ink-dim">{t("update_repo_page_desc")}</p>
 
-      {/* Step 1: เลือก repo */}
+      {/* Step 1: เลือก repo — โชว์รายการทั้งหมดเลย แตะแถวเพื่อเลือก ไม่ต้องกด dropdown */}
       <section className="mb-5 rounded-xl border border-base-border bg-base-surface p-4">
         <label className="mb-1.5 block text-xs font-medium text-ink-dim">{t("select_repo_label")}</label>
 
@@ -216,19 +219,39 @@ export default function UpdateRepoPage() {
           </p>
         ) : repos.length === 0 ? (
           <p className="text-sm text-ink-faint">{t("no_repos")}</p>
+        ) : selectedFullName ? (
+          // เลือกแล้ว: โชว์สรุป repo ที่เลือก + ปุ่มเปลี่ยน แทนที่จะโชว์ทั้งลิสต์ค้างไว้
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5">
+            <div className="flex min-w-0 items-center gap-2">
+              <Github size={15} strokeWidth={2} className="shrink-0 text-ink-dim" />
+              <span className="truncate font-mono text-sm text-ink">{selectedFullName}</span>
+            </div>
+            <button
+              onClick={() => {
+                setSelectedFullName("");
+                resetDiffState();
+              }}
+              className="flex shrink-0 items-center gap-1 rounded-md border border-base-border bg-base-surface px-2 py-1 text-[11px] text-ink-dim active:scale-95 transition"
+            >
+              <Pencil size={11} /> {t("change_repo")}
+            </button>
+          </div>
         ) : (
-          <select
-            value={selectedFullName}
-            onChange={(e) => handleSelectRepo(e.target.value)}
-            className="w-full rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5 font-mono text-sm text-ink focus:outline-none"
-          >
-            <option value="">{t("select_repo_placeholder")}</option>
+          <div className="max-h-80 space-y-1 overflow-y-auto">
             {repos.map((r) => (
-              <option key={r.full_name} value={r.full_name}>
-                {r.full_name}
-              </option>
+              <button
+                key={r.full_name}
+                onClick={() => handleSelectRepo(r.full_name)}
+                className="flex w-full items-center justify-between gap-2 rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5 text-left active:scale-[0.98] transition"
+              >
+                <div className="flex min-w-0 items-center gap-2">
+                  <Github size={15} strokeWidth={2} className="shrink-0 text-ink-faint" />
+                  <span className="truncate font-mono text-sm text-ink">{r.full_name}</span>
+                </div>
+                <ChevronRight size={15} strokeWidth={2} className="shrink-0 text-ink-faint" />
+              </button>
             ))}
-          </select>
+          </div>
         )}
 
         {selectedFullName && (
