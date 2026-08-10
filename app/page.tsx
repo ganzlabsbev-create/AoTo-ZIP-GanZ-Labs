@@ -2,12 +2,11 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut, GitPullRequestArrow, Terminal } from "lucide-react";
+import { UploadCloud, GitPullRequestArrow, Terminal } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
-import LanguageToggle from "@/components/LanguageToggle";
-import UploadZone from "@/components/UploadZone";
 import ProjectCard, { ProjectListItem } from "@/components/ProjectCard";
-import FlowDiagram from "@/components/FlowDiagram";
+import ToolCard from "@/components/ToolCard";
+import BottomNav from "@/components/BottomNav";
 
 export default function HomePage() {
   const { t } = useLang();
@@ -24,50 +23,32 @@ export default function HomePage() {
     loadProjects();
   }, []);
 
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.replace("/login");
-    router.refresh();
-  }
-
   return (
     <main className="min-h-screen bg-grid-fade">
-      <div className="mx-auto max-w-md px-4 pb-10 pt-6">
-        <header className="mb-6 flex items-center justify-between border-b border-base-border pb-4">
-          <div className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-base-border bg-base-surface text-accent-indigo">
-              <Terminal size={15} strokeWidth={2.25} />
-            </div>
-            <h1 className="font-display text-lg font-semibold tracking-tight text-ink">{t("appName")}</h1>
+      <div className="mx-auto max-w-md px-4 pb-24 pt-6">
+        <header className="mb-6 flex items-center gap-2 border-b border-base-border pb-4">
+          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-base-border bg-base-surface text-accent-indigo">
+            <Terminal size={15} strokeWidth={2.25} />
           </div>
-          <div className="flex items-center gap-2">
-            <LanguageToggle />
-            <button
-              onClick={logout}
-              aria-label={t("logout")}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-base-border bg-base-surface text-ink-dim active:scale-95 transition"
-            >
-              <LogOut size={15} strokeWidth={2} />
-            </button>
-          </div>
+          <h1 className="font-display text-lg font-semibold tracking-tight text-ink">{t("appName")}</h1>
         </header>
 
-        <FlowDiagram />
-
-        <section className="mt-5">
-          <UploadZone
-            onUploaded={(result) => {
-              router.push(`/project/${result.projectId}`);
-            }}
+        <section className="space-y-2.5">
+          <ToolCard
+            icon={UploadCloud}
+            title={t("tool_new_deploy_title")}
+            description={t("tool_new_deploy_desc")}
+            color="indigo"
+            onClick={() => router.push("/new")}
+          />
+          <ToolCard
+            icon={GitPullRequestArrow}
+            title={t("tool_update_repo_title")}
+            description={t("tool_update_repo_desc")}
+            color="mint"
+            onClick={() => router.push("/update-repo")}
           />
         </section>
-
-        <button
-          onClick={() => router.push("/update-repo")}
-          className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-base-border bg-base-surface/60 py-3 text-sm font-medium text-ink-dim transition hover:border-accent-indigo/40 hover:text-ink active:scale-[0.98]"
-        >
-          <GitPullRequestArrow size={15} strokeWidth={2} /> {t("update_repo_nav")}
-        </button>
 
         <section className="mt-8">
           <div className="mb-3 flex items-center justify-between">
@@ -99,6 +80,8 @@ export default function HomePage() {
           )}
         </section>
       </div>
+
+      <BottomNav />
     </main>
   );
 }
