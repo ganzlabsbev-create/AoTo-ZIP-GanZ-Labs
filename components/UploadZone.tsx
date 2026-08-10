@@ -54,14 +54,18 @@ export default function UploadZone({
           const file = e.dataTransfer.files?.[0];
           if (file) handleFile(file);
         }}
-        className={`flex flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-12 text-center transition active:scale-[0.99] ${
-          isDragging ? "border-accent-indigo bg-accent-indigo/5" : "border-base-border bg-base-surface"
+        className={`relative flex cursor-pointer flex-col items-center justify-center gap-3 overflow-hidden rounded-xl border-2 border-dashed px-6 py-12 text-center transition active:scale-[0.99] ${
+          isDragging
+            ? "border-accent-indigo bg-accent-indigo/5 shadow-glow-indigo"
+            : "border-base-border bg-base-surface hover:border-ink-faint/50"
         }`}
       >
         {isUploading ? (
           <Loader2 size={28} strokeWidth={2} className="animate-spin text-accent-indigo" />
         ) : (
-          <UploadCloud size={28} strokeWidth={1.75} className="text-ink-dim" />
+          <div className="flex h-12 w-12 items-center justify-center rounded-full border border-base-border bg-base-surface2 text-ink-dim">
+            <UploadCloud size={22} strokeWidth={1.75} />
+          </div>
         )}
         <p className="font-display text-base font-medium text-ink">
           {isUploading ? t("upload_uploading") : t("upload_title")}
@@ -69,7 +73,7 @@ export default function UploadZone({
         {!isUploading && (
           <>
             <span className="text-xs text-ink-faint">{t("upload_or")}</span>
-            <span className="rounded-lg bg-accent-indigo px-4 py-2 text-sm font-medium text-white">
+            <span className="rounded-lg bg-accent-indigo px-4 py-2 text-sm font-medium text-base-bg shadow-glow-indigo">
               {t("upload_button")}
             </span>
           </>

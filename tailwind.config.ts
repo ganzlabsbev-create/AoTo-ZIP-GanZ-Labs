@@ -31,6 +31,17 @@ const config: Config = {
       borderRadius: {
         xl: "14px",
       },
+      boxShadow: {
+        "glow-indigo": "0 0 0 3px rgba(139,127,255,0.18)",
+        "glow-mint": "0 0 0 3px rgba(52,211,153,0.18)",
+        "glow-amber": "0 0 0 3px rgba(251,191,36,0.18)",
+        "glow-red": "0 0 0 3px rgba(248,113,113,0.18)",
+        card: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.6)",
+      },
+      backgroundImage: {
+        "grid-fade":
+          "radial-gradient(circle at 50% 0%, rgba(139,127,255,0.10), transparent 60%)",
+      },
     },
   },
   plugins: [],

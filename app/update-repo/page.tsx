@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
+import CircleCheckbox from "@/components/CircleCheckbox";
 
 type RepoInfo = { name: string; full_name: string; default_branch: string; updated_at: string };
 type DiffPayload = { modified: string[]; zipOnly: string[]; repoOnly: string[] };
@@ -568,12 +569,8 @@ function DiffTreeView({
                 ? "text-accent-red line-through"
                 : "text-ink-dim";
 
-        const accentClass =
-          n.status === "modified"
-            ? "accent-accent-amber"
-            : n.status === "add"
-              ? "accent-accent-mint"
-              : "accent-accent-red";
+        const circleColor =
+          n.status === "modified" ? "amber" : n.status === "add" ? "mint" : "red";
 
         function handleToggle() {
           if (n.status === "modified") onToggleReplace(n.fullPath);
@@ -582,21 +579,17 @@ function DiffTreeView({
         }
 
         return (
-          <label
+          <div
             key={n.fullPath}
+            onClick={handleToggle}
             className={`flex cursor-pointer items-center gap-2 rounded-lg py-2.5 pl-1 pr-2 transition ${
-              isMarkedDelete ? "bg-accent-red/5" : checked ? "bg-base-surface2" : ""
+              isMarkedDelete ? "bg-accent-red/5" : checked ? "bg-base-surface2" : "hover:bg-base-surface2/50"
             }`}
           >
             <FileIcon size={16} strokeWidth={2} className={`shrink-0 ${colorClass}`} />
             <span className={`min-w-0 flex-1 truncate font-mono text-sm ${colorClass}`}>{n.name}</span>
-            <input
-              type="checkbox"
-              checked={checked}
-              onChange={handleToggle}
-              className={`h-[18px] w-[18px] shrink-0 ${accentClass}`}
-            />
-          </label>
+            <CircleCheckbox checked={checked} onChange={handleToggle} color={circleColor} />
+          </div>
         );
       })}
     </div>
