@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { LogOut, GitPullRequestArrow } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
 import UploadZone from "@/components/UploadZone";
@@ -55,6 +55,13 @@ export default function HomePage() {
           }}
         />
       </section>
+
+      <button
+        onClick={() => router.push("/update-repo")}
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-base-border bg-base-surface py-3 text-sm font-medium text-ink-dim active:scale-[0.98] transition"
+      >
+        <GitPullRequestArrow size={15} strokeWidth={2} /> {t("update_repo_nav")}
+      </button>
 
       <section className="mt-8">
         <h2 className="mb-3 font-display text-sm font-semibold uppercase tracking-wide text-ink-faint">
