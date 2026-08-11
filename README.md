@@ -1,7 +1,7 @@
 # Project Uploader — ZIP → GitHub / Vercel 
 
 เครื่องมือภายในองค์กร: อัปโหลด ZIP → ตรวจ framework อัตโนมัติ → deploy ไป Vercel หรือ push ขึ้น GitHub
-
+ 
 Mobile-first, รองรับไทย/อังกฤษ, มีรหัสผ่านกันหน้าแรกไว้ชั้นหนึ่ง
 ออกแบบให้ deploy บน **Vercel เอง** ได้จริง (ใช้ Vercel Postgres เก็บ history + Vercel Blob เก็บไฟล์ ZIP ระหว่างขั้นตอน)
 
