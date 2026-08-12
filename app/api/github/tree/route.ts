@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getRepoTree } from "@/lib/github";
 
+export const dynamic = "force-dynamic";
+
 /** คืนรายชื่อไฟล์ปัจจุบันของ repo/branch ที่เลือก (ใช้เดี่ยวๆ ได้ นอกเหนือจาก diff-upload ที่เรียกฟังก์ชันนี้ในตัวอยู่แล้ว) */
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);

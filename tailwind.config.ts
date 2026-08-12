@@ -6,18 +6,18 @@ const config: Config = {
     extend: {
       colors: {
         base: {
-          bg: "#0B0D10",
-          surface: "#14171B",
-          surface2: "#1B1F24",
-          border: "#23272E",
+          bg: "#050B14",
+          surface: "#0B1420",
+          surface2: "#111E2E",
+          border: "#1D3049",
         },
         ink: {
-          DEFAULT: "#E7E9EC",
-          dim: "#8A919C",
-          faint: "#565C66",
+          DEFAULT: "#EAF3FC",
+          dim: "#8FA6BE",
+          faint: "#54697F",
         },
         accent: {
-          indigo: "#8B7FFF",
+          indigo: "#3FA9F5",
           mint: "#34D399",
           amber: "#FBBF24",
           red: "#F87171",
@@ -32,15 +32,15 @@ const config: Config = {
         xl: "14px",
       },
       boxShadow: {
-        "glow-indigo": "0 0 0 3px rgba(139,127,255,0.18)",
+        "glow-indigo": "0 0 0 3px rgba(63,169,245,0.20)",
         "glow-mint": "0 0 0 3px rgba(52,211,153,0.18)",
         "glow-amber": "0 0 0 3px rgba(251,191,36,0.18)",
         "glow-red": "0 0 0 3px rgba(248,113,113,0.18)",
-        card: "0 1px 0 0 rgba(255,255,255,0.03) inset, 0 8px 24px -12px rgba(0,0,0,0.6)",
+        card: "0 1px 0 0 rgba(255,255,255,0.04) inset, 0 8px 24px -12px rgba(0,0,0,0.7)",
       },
       backgroundImage: {
         "grid-fade":
-          "radial-gradient(circle at 50% 0%, rgba(139,127,255,0.10), transparent 60%)",
+          "radial-gradient(circle at 50% 0%, rgba(63,169,245,0.14), transparent 60%)",
       },
     },
   },

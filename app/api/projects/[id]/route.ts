@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getProject, getDeploymentsForProject } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const project = await getProject(params.id);
   if (!project) {

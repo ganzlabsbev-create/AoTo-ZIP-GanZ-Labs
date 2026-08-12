@@ -22,15 +22,15 @@ const mono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Project Uploader",
-  description: "ZIP → GitHub / Vercel, internal tool",
+  title: "GanZ Ops",
+  description: "GanZ Ops — ZIP → GitHub / Vercel, internal tool",
 };
 
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 1,
-  themeColor: "#0B0D10",
+  themeColor: "#050B14",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

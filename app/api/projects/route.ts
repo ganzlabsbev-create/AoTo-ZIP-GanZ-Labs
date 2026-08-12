@@ -1,6 +1,12 @@
 import { NextResponse } from "next/server";
 import { listProjects, getLatestDeploymentStatus } from "@/lib/db";
 
+// สำคัญ: ห้ามให้ Next.js แคช route นี้แบบ static เด็ดขาด
+// เพราะไม่ได้ใช้ cookies/headers เลย Next.js จะเข้าใจผิดว่าเป็นหน้า static
+// แล้ว cache ผลลัพธ์ไว้ตั้งแต่ build/deploy ครั้งแรก ทำให้ "Recent Projects"
+// ไม่อัพเดตจนกว่าจะมี deploy ใหม่มา reset cache
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   const projects = await listProjects(30);
   const withStatus = await Promise.all(

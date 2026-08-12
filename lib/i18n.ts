@@ -2,7 +2,7 @@ export type Lang = "th" | "en";
 
 export const dict = {
   th: {
-    appName: "Project Uploader",
+    appName: "GanZ Ops",
     login_title: "กรอกรหัสเพื่อเข้าใช้งาน",
     login_placeholder: "รหัสผ่าน",
     login_button: "เข้าสู่ระบบ",
@@ -98,10 +98,10 @@ export const dict = {
     settings_account: "บัญชี",
     settings_logout_desc: "ออกจากระบบในเครื่องนี้",
     settings_about: "เกี่ยวกับ",
-    settings_about_desc: "เครื่องมือภายในองค์กร สำหรับอัปโหลด ZIP ไป GitHub / Vercel",
+    settings_about_desc: "GanZ Ops — เครื่องมือภายในองค์กร สำหรับอัปโหลด ZIP ไป GitHub / Vercel",
   },
   en: {
-    appName: "Project Uploader",
+    appName: "GanZ Ops",
     login_title: "Enter passcode to continue",
     login_placeholder: "Passcode",
     login_button: "Sign in",
@@ -198,7 +198,7 @@ export const dict = {
     settings_account: "Account",
     settings_logout_desc: "Sign out on this device",
     settings_about: "About",
-    settings_about_desc: "Internal tool for uploading a ZIP to GitHub / Vercel",
+    settings_about_desc: "GanZ Ops — internal tool for uploading a ZIP to GitHub / Vercel",
   },
 } as const;
 

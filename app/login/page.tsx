@@ -2,6 +2,7 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import Image from "next/image";
 import { KeyRound, Loader2 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -48,10 +49,14 @@ function LoginForm() {
 
       <div className="w-full max-w-sm">
         <div className="mb-8 flex flex-col items-center gap-3 text-center">
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-accent-indigo/10 text-accent-indigo">
-            <KeyRound size={22} strokeWidth={2} />
+          <div className="relative flex h-16 w-16 items-center justify-center overflow-hidden rounded-full shadow-glow-indigo">
+            <Image src="/logo.png" alt="GanZ Ops" width={64} height={64} priority className="h-full w-full object-contain" />
           </div>
-          <h1 className="font-display text-xl font-semibold text-ink">{t("login_title")}</h1>
+          <h2 className="font-display text-base font-semibold tracking-tight text-ink">{t("appName")}</h2>
+          <div className="flex items-center gap-1.5 text-ink-dim">
+            <KeyRound size={13} strokeWidth={2} />
+            <h1 className="font-display text-sm font-medium">{t("login_title")}</h1>
+          </div>
         </div>
 
         <form onSubmit={submit} className="flex flex-col gap-3">

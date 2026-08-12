@@ -4,8 +4,8 @@
 
 html,
 body {
-  background-color: #0b0d10;
-  color: #e7e9ec;
+  background-color: #050b14;
+  color: #eaf3fc;
   overscroll-behavior-y: none;
 }
 
@@ -22,7 +22,7 @@ a {
 input:focus-visible,
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid #8b7fff;
+  outline: 2px solid #3fa9f5;
   outline-offset: 2px;
 }
 
@@ -31,6 +31,6 @@ a:focus-visible {
   height: 6px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #23272e;
+  background: #1d3049;
   border-radius: 999px;
 }

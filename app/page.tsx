@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { UploadCloud, GitPullRequestArrow, Terminal } from "lucide-react";
+import Image from "next/image";
+import { UploadCloud, GitPullRequestArrow } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import ProjectCard, { ProjectListItem } from "@/components/ProjectCard";
 import ToolCard from "@/components/ToolCard";
@@ -26,9 +27,9 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-grid-fade">
       <div className="mx-auto max-w-md px-4 pb-24 pt-6">
-        <header className="mb-6 flex items-center gap-2 border-b border-base-border pb-4">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-base-border bg-base-surface text-accent-indigo">
-            <Terminal size={15} strokeWidth={2.25} />
+        <header className="mb-6 flex items-center gap-2.5 border-b border-base-border pb-4">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full shadow-glow-indigo">
+            <Image src="/logo.png" alt="GanZ Ops" width={36} height={36} priority className="h-full w-full object-contain" />
           </div>
           <h1 className="font-display text-lg font-semibold tracking-tight text-ink">{t("appName")}</h1>
         </header>

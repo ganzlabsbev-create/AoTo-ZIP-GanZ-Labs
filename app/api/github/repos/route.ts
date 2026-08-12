@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { listRepos } from "@/lib/github";
 
+export const dynamic = "force-dynamic";
+
 /** คืนรายชื่อ repo ทั้งหมดของ org/user ที่ token ผูกไว้ ให้ dropdown เลือก repo ในหน้า /update-repo */
 export async function GET() {
   try {
