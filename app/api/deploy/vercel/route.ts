@@ -3,9 +3,17 @@ import { nanoid } from "nanoid";
 import { newExtractDir } from "@/lib/paths";
 import { extractZip, listAllFiles } from "@/lib/zip";
 import { fetchZipBlob } from "@/lib/blob";
-import { deployToVercel, pollDeploymentUntilReady } from "@/lib/vercel";
+import { deployToVercel } from "@/lib/vercel";
 import { getProject, insertDeployment, updateDeployment } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
+/**
+ * เริ่ม deploy แบบ "ไม่รอ" (ต่างจากเดิมที่ block จน READY/ERROR ค่อย response กลับ)
+ * สร้าง deployment บน Vercel แล้วคืน deploymentId (ของแอปเรา) + vercelDeploymentId กลับทันที
+ * ให้ client ไป poll สถานะ + build log สดๆ ที่ /api/deploy/vercel/status ต่อเอง
+ * (เพื่อโชว์ log แบบ real-time แทนที่จะรอเงียบๆ จนจบ)
+ */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const projectId = body?.projectId as string | undefined;
@@ -31,10 +39,10 @@ export async function POST(req: NextRequest) {
     status: "pending",
     url: null,
     detail: null,
+    domain_name: domainName,
   });
 
   try {
-    // ดึง ZIP ต้นฉบับจาก Blob กลับมาแตกใหม่ในเครื่องของ request นี้
     const zipBuffer = await fetchZipBlob(project.zip_blob_url);
     const extractDir = newExtractDir(projectId);
     extractZip(zipBuffer, extractDir);
@@ -45,16 +53,12 @@ export async function POST(req: NextRequest) {
     }
 
     const created = await deployToVercel(extractDir, files, domainName);
-    const ready = await pollDeploymentUntilReady(created.id);
-    const url = `https://${ready.url}`;
+    await updateDeployment(deploymentId, { vercel_deployment_id: created.id });
 
-    await updateDeployment(deploymentId, { status: "success", url, detail: null });
-
-    return NextResponse.json({ ok: true, url });
+    return NextResponse.json({ ok: true, deploymentId, vercelDeploymentId: created.id });
   } catch (err: any) {
     const detail = String(err?.message || err);
-    const buildLog: string | null = err?.buildLog ?? null;
-    await updateDeployment(deploymentId, { status: "failed", url: null, detail, build_log: buildLog });
-    return NextResponse.json({ ok: false, error: "deploy_failed", detail, buildLog }, { status: 500 });
+    await updateDeployment(deploymentId, { status: "failed", detail });
+    return NextResponse.json({ ok: false, error: "deploy_start_failed", detail }, { status: 500 });
   }
 }

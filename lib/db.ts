@@ -36,6 +36,12 @@ async function ensureSchema() {
   `;
   // เผื่อ table เดิมถูกสร้างไว้ก่อนหน้านี้โดยยังไม่มีคอลัมน์นี้
   await sql`ALTER TABLE deployments ADD COLUMN IF NOT EXISTS build_log TEXT;`;
+  // vercel_deployment_id = id จริงฝั่ง Vercel (ใช้สำหรับ rollback ผ่าน alias API)
+  await sql`ALTER TABLE deployments ADD COLUMN IF NOT EXISTS vercel_deployment_id TEXT;`;
+  // domain_name = โดเมนที่ deploy ครั้งนี้ผูกไว้ (ต้องรู้ไว้ตอน rollback เพื่อรู้ว่าจะย้าย alias ไหน)
+  await sql`ALTER TABLE deployments ADD COLUMN IF NOT EXISTS domain_name TEXT;`;
+  // custom_domain ต่อโปรเจกต์ (โดเมนเสริมที่ผูกเพิ่มจากค่า default .vercel.app)
+  await sql`ALTER TABLE projects ADD COLUMN IF NOT EXISTS custom_domain TEXT;`;
   initialized = true;
 }
 
@@ -47,6 +53,7 @@ export interface ProjectRow {
   file_tree: string | null;
   has_package_json: boolean;
   zip_blob_url: string | null;
+  custom_domain: string | null;
   created_at: string;
 }
 
@@ -58,14 +65,18 @@ export interface DeploymentRow {
   url: string | null;
   detail: string | null;
   build_log: string | null;
+  vercel_deployment_id: string | null;
+  domain_name: string | null;
   created_at: string;
 }
 
-export async function insertProject(row: Omit<ProjectRow, "created_at">) {
+export async function insertProject(
+  row: Omit<ProjectRow, "created_at" | "custom_domain"> & { custom_domain?: string | null }
+) {
   await ensureSchema();
   await sql`
-    INSERT INTO projects (id, name, framework, build_command, file_tree, has_package_json, zip_blob_url)
-    VALUES (${row.id}, ${row.name}, ${row.framework}, ${row.build_command}, ${row.file_tree}, ${row.has_package_json}, ${row.zip_blob_url})
+    INSERT INTO projects (id, name, framework, build_command, file_tree, has_package_json, zip_blob_url, custom_domain)
+    VALUES (${row.id}, ${row.name}, ${row.framework}, ${row.build_command}, ${row.file_tree}, ${row.has_package_json}, ${row.zip_blob_url}, ${row.custom_domain ?? null})
   `;
 }
 
@@ -107,28 +118,65 @@ export async function listProjects(limit = 30): Promise<ProjectRow[]> {
 }
 
 export async function insertDeployment(
-  row: Omit<DeploymentRow, "created_at" | "build_log"> & { build_log?: string | null }
+  row: Omit<DeploymentRow, "created_at" | "build_log" | "vercel_deployment_id" | "domain_name"> & {
+    build_log?: string | null;
+    vercel_deployment_id?: string | null;
+    domain_name?: string | null;
+  }
 ) {
   await ensureSchema();
   await sql`
-    INSERT INTO deployments (id, project_id, target, status, url, detail, build_log)
-    VALUES (${row.id}, ${row.project_id}, ${row.target}, ${row.status}, ${row.url}, ${row.detail}, ${row.build_log ?? null})
+    INSERT INTO deployments (id, project_id, target, status, url, detail, build_log, vercel_deployment_id, domain_name)
+    VALUES (${row.id}, ${row.project_id}, ${row.target}, ${row.status}, ${row.url}, ${row.detail}, ${row.build_log ?? null}, ${row.vercel_deployment_id ?? null}, ${row.domain_name ?? null})
   `;
 }
 
 export async function updateDeployment(
   id: string,
-  patch: Partial<Pick<DeploymentRow, "status" | "url" | "detail" | "build_log">>
+  patch: Partial<
+    Pick<DeploymentRow, "status" | "url" | "detail" | "build_log" | "vercel_deployment_id" | "domain_name">
+  >
 ) {
   await ensureSchema();
   await sql`
     UPDATE deployments
     SET status = COALESCE(${patch.status ?? null}, status),
-        url = ${patch.url ?? null},
+        url = COALESCE(${patch.url ?? null}, url),
         detail = ${patch.detail ?? null},
-        build_log = ${patch.build_log ?? null}
+        build_log = COALESCE(${patch.build_log ?? null}, build_log),
+        vercel_deployment_id = COALESCE(${patch.vercel_deployment_id ?? null}, vercel_deployment_id),
+        domain_name = COALESCE(${patch.domain_name ?? null}, domain_name)
     WHERE id = ${id}
   `;
+}
+
+export async function getDeployment(id: string): Promise<DeploymentRow | undefined> {
+  await ensureSchema();
+  const { rows } = await sql<DeploymentRow>`SELECT * FROM deployments WHERE id = ${id}`;
+  return rows[0];
+}
+
+/** ลบโปรเจกต์และ deployment history ที่เกี่ยวข้องทั้งหมด (ไม่ลบไฟล์บน Vercel/GitHub จริง แค่เอาออกจากประวัติในแอปนี้) */
+export async function deleteProject(id: string): Promise<void> {
+  await ensureSchema();
+  await sql`DELETE FROM deployments WHERE project_id = ${id}`;
+  await sql`DELETE FROM projects WHERE id = ${id}`;
+}
+
+export async function setCustomDomain(id: string, domain: string | null): Promise<void> {
+  await ensureSchema();
+  await sql`UPDATE projects SET custom_domain = ${domain} WHERE id = ${id}`;
+}
+
+/** deployment ที่ deploy ขึ้น vercel สำเร็จทั้งหมดของโปรเจกต์นี้ เรียงใหม่สุดก่อน (ใช้ทำ rollback) */
+export async function getSuccessfulVercelDeployments(projectId: string): Promise<DeploymentRow[]> {
+  await ensureSchema();
+  const { rows } = await sql<DeploymentRow>`
+    SELECT * FROM deployments
+    WHERE project_id = ${projectId} AND target = 'vercel' AND status = 'success' AND vercel_deployment_id IS NOT NULL
+    ORDER BY created_at DESC
+  `;
+  return rows;
 }
 
 export async function getDeploymentsForProject(projectId: string): Promise<DeploymentRow[]> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
@@ -14,6 +14,13 @@ import {
   File as FileIcon,
   Copy,
   RefreshCw,
+  History,
+  Globe,
+  KeyRound,
+  Plus,
+  Trash2,
+  Pencil,
+  Check,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -43,10 +50,27 @@ function TreeView({ nodes, depth = 0 }: { nodes: TreeNode[]; depth?: number }) {
 type DeployStatus = "idle" | "loading" | "success" | "error";
 type BuildLogSource = "vercel" | "github" | null;
 
-/** กล่องแสดง build log เต็มของ deployment ล่าสุดที่ error (vercel หรือ github ก็ใช้ตัวเดียวกัน) */
-function BuildLogPanel({ log, source }: { log: string; source: BuildLogSource }) {
+/** กล่องแสดง build log (ใช้ทั้งตอน error แบบเดิม และตอน live ระหว่าง deploy) */
+function BuildLogPanel({
+  log,
+  source,
+  title,
+  live,
+}: {
+  log: string;
+  source: BuildLogSource;
+  title?: string;
+  live?: boolean;
+}) {
   const { t } = useLang();
   const [copied, setCopied] = useState(false);
+  const logRef = useRef<HTMLPreElement>(null);
+
+  useEffect(() => {
+    if (live && logRef.current) {
+      logRef.current.scrollTop = logRef.current.scrollHeight;
+    }
+  }, [log, live]);
 
   async function handleCopy() {
     try {
@@ -61,8 +85,9 @@ function BuildLogPanel({ log, source }: { log: string; source: BuildLogSource })
   return (
     <section className="mt-4 rounded-xl border border-base-border bg-base-surface p-4">
       <div className="mb-2 flex items-center justify-between gap-2">
-        <p className="text-[11px] uppercase tracking-wide text-ink-faint">
-          {t("build_log_title")}
+        <p className="flex items-center gap-1.5 text-[11px] uppercase tracking-wide text-ink-faint">
+          {live && <Loader2 size={11} className="animate-spin text-accent-indigo" />}
+          {title || t("build_log_title")}
           {source === "vercel" ? " · Vercel" : source === "github" ? " · GitHub" : ""}
         </p>
         <button
@@ -72,8 +97,11 @@ function BuildLogPanel({ log, source }: { log: string; source: BuildLogSource })
           <Copy size={12} /> {copied ? t("build_log_copied") : t("build_log_copy")}
         </button>
       </div>
-      <pre className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-base-bg p-3 font-mono text-xs text-ink-dim">
-        {log}
+      <pre
+        ref={logRef}
+        className="max-h-80 overflow-y-auto whitespace-pre-wrap break-words rounded-lg bg-base-bg p-3 font-mono text-xs text-ink-dim"
+      >
+        {log || t("live_log_waiting")}
       </pre>
     </section>
   );
@@ -84,6 +112,7 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
   const [project, setProject] = useState<any>(null);
+  const [deployments, setDeployments] = useState<any[]>([]);
 
   const [domainName, setDomainName] = useState("");
   const [repoName, setRepoName] = useState("");
@@ -91,6 +120,7 @@ export default function ProjectDetailPage() {
   const [vercelStatus, setVercelStatus] = useState<DeployStatus>("idle");
   const [vercelUrl, setVercelUrl] = useState<string | null>(null);
   const [vercelError, setVercelError] = useState<string | null>(null);
+  const [liveLog, setLiveLog] = useState<string>("");
 
   const [githubStatus, setGithubStatus] = useState<DeployStatus>("idle");
   const [githubUrl, setGithubUrl] = useState<string | null>(null);
@@ -107,7 +137,31 @@ export default function ProjectDetailPage() {
   );
   const [updateZipError, setUpdateZipError] = useState<string | null>(null);
 
-  useEffect(() => {
+  // rollback
+  const [rollbackConfirmId, setRollbackConfirmId] = useState<string | null>(null);
+  const [rollbackLoadingId, setRollbackLoadingId] = useState<string | null>(null);
+  const [rollbackMsg, setRollbackMsg] = useState<string | null>(null);
+  const [rollbackErr, setRollbackErr] = useState<string | null>(null);
+
+  // env vars
+  const [envs, setEnvs] = useState<{ id: string; key: string; target: string[] }[] | null>(null);
+  const [envNotDeployed, setEnvNotDeployed] = useState(false);
+  const [newEnvKey, setNewEnvKey] = useState("");
+  const [newEnvValue, setNewEnvValue] = useState("");
+  const [envSaving, setEnvSaving] = useState(false);
+  const [envEditingId, setEnvEditingId] = useState<string | null>(null);
+  const [envEditValue, setEnvEditValue] = useState("");
+
+  // custom domain
+  const [domainInput, setDomainInput] = useState("");
+  const [domainSaving, setDomainSaving] = useState(false);
+  const [domainErr, setDomainErr] = useState<string | null>(null);
+
+  // delete project
+  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  function loadProject() {
     fetch(`/api/projects/${params.id}`)
       .then((r) => r.json())
       .then((data) => {
@@ -115,6 +169,7 @@ export default function ProjectDetailPage() {
         setProject(data.project);
         setDomainName(data.project.name);
         setRepoName(data.project.name);
+        setDeployments(data.deployments || []);
 
         const successVercel = data.deployments.find(
           (d: any) => d.target === "vercel" && d.status === "success"
@@ -131,11 +186,65 @@ export default function ProjectDetailPage() {
           setGithubUrl(successGithub.url);
         }
       });
+  }
+
+  useEffect(() => {
+    loadProject();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
+
+  function loadEnvs() {
+    fetch(`/api/projects/${params.id}/env`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (!data.ok) {
+          if (data.error === "not_deployed_yet") setEnvNotDeployed(true);
+          setEnvs([]);
+          return;
+        }
+        setEnvNotDeployed(false);
+        setEnvs(data.envs);
+      })
+      .catch(() => setEnvs([]));
+  }
+
+  useEffect(() => {
+    loadEnvs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params.id]);
+
+  async function pollVercelStatus(deploymentId: string) {
+    for (let i = 0; i < 90; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const res = await fetch(`/api/deploy/vercel/status?deploymentId=${deploymentId}`);
+      const data = await res.json();
+      if (data.buildLog) setLiveLog(data.buildLog);
+
+      if (data.status === "success") {
+        setVercelUrl(data.url);
+        setVercelStatus("success");
+        loadProject();
+        return;
+      }
+      if (data.status === "failed") {
+        if (data.buildLog) {
+          setBuildLog(data.buildLog);
+          setBuildLogSource("vercel");
+        }
+        setVercelError(data.detail || t("deploy_failed"));
+        setVercelStatus("error");
+        return;
+      }
+    }
+    setVercelError("timeout");
+    setVercelStatus("error");
+  }
 
   async function deployVercel() {
     setVercelStatus("loading");
     setVercelError(null);
+    setLiveLog("");
+    setBuildLog(null);
     try {
       const res = await fetch("/api/deploy/vercel", {
         method: "POST",
@@ -144,14 +253,9 @@ export default function ProjectDetailPage() {
       });
       const data = await res.json();
       if (!data.ok) {
-        if (data.buildLog) {
-          setBuildLog(data.buildLog);
-          setBuildLogSource("vercel");
-        }
         throw new Error(data.detail || data.error);
       }
-      setVercelUrl(data.url);
-      setVercelStatus("success");
+      await pollVercelStatus(data.deploymentId);
     } catch (err: any) {
       setVercelError(String(err?.message || err));
       setVercelStatus("error");
@@ -199,7 +303,6 @@ export default function ProjectDetailPage() {
         throw new Error(msg || "update_zip_failed");
       }
 
-      // อัพเดตข้อมูลโปรเจกต์ในหน้าให้ตรงกับ ZIP ใหม่ (id/name เดิม ไม่เปลี่ยน)
       setProject((prev: any) => ({
         ...prev,
         framework: data.framework,
@@ -207,8 +310,6 @@ export default function ProjectDetailPage() {
         file_tree: data.tree,
       }));
 
-      // ผลลัพธ์ deploy เดิม (ถ้ามี) อ้างอิงโค้ดเก่า ล้างสถานะทิ้งเพื่อไม่ให้เข้าใจผิด
-      // (ค่า domainName / repoName ที่กรอกไว้ไม่แตะ ใช้ค่าเดิมได้เลย)
       setVercelStatus("idle");
       setVercelUrl(null);
       setVercelError(null);
@@ -217,12 +318,157 @@ export default function ProjectDetailPage() {
       setGithubError(null);
       setBuildLog(null);
       setBuildLogSource(null);
+      setLiveLog("");
 
       setUpdateZipStatus("success");
       setTimeout(() => setUpdateZipStatus("idle"), 3000);
     } catch (err: any) {
       setUpdateZipError(String(err?.message || err));
       setUpdateZipStatus("error");
+    }
+  }
+
+  // deployment สำเร็จบน vercel ทั้งหมด ไม่ซ้ำ vercel_deployment_id เรียงใหม่สุดก่อน (สำหรับ rollback list)
+  const vercelHistory = useMemo(() => {
+    const seen = new Set<string>();
+    return deployments.filter((d) => {
+      if (d.target !== "vercel" || d.status !== "success" || !d.vercel_deployment_id) return false;
+      if (seen.has(d.vercel_deployment_id)) return false;
+      seen.add(d.vercel_deployment_id);
+      return true;
+    });
+  }, [deployments]);
+
+  async function handleRollback(deploymentId: string) {
+    if (rollbackConfirmId !== deploymentId) {
+      setRollbackConfirmId(deploymentId);
+      return;
+    }
+    setRollbackLoadingId(deploymentId);
+    setRollbackErr(null);
+    setRollbackMsg(null);
+    try {
+      const res = await fetch("/api/deploy/vercel/rollback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ deploymentId }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.detail || data.error);
+      setRollbackMsg(t("rollback_success"));
+      setVercelUrl(data.url);
+      setVercelStatus("success");
+      loadProject();
+    } catch (err: any) {
+      setRollbackErr(String(err?.message || err));
+    } finally {
+      setRollbackLoadingId(null);
+      setRollbackConfirmId(null);
+    }
+  }
+
+  async function handleAddEnv() {
+    if (!newEnvKey.trim() || !newEnvValue) return;
+    setEnvSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${params.id}/env`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: newEnvKey.trim(), value: newEnvValue }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.detail || data.error);
+      setNewEnvKey("");
+      setNewEnvValue("");
+      loadEnvs();
+    } catch (err: any) {
+      alert(String(err?.message || err));
+    } finally {
+      setEnvSaving(false);
+    }
+  }
+
+  async function handleSaveEnvEdit(envId: string) {
+    setEnvSaving(true);
+    try {
+      const res = await fetch(`/api/projects/${params.id}/env`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "", value: envEditValue, envId }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.detail || data.error);
+      setEnvEditingId(null);
+      setEnvEditValue("");
+    } catch (err: any) {
+      alert(String(err?.message || err));
+    } finally {
+      setEnvSaving(false);
+    }
+  }
+
+  async function handleDeleteEnv(envId: string) {
+    try {
+      const res = await fetch(`/api/projects/${params.id}/env?envId=${envId}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.detail || data.error);
+      loadEnvs();
+    } catch (err: any) {
+      alert(String(err?.message || err));
+    }
+  }
+
+  async function handleAddDomain() {
+    if (!domainInput.trim()) return;
+    setDomainSaving(true);
+    setDomainErr(null);
+    try {
+      const res = await fetch(`/api/projects/${params.id}/domain`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ domain: domainInput.trim() }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.detail || data.error);
+      setDomainInput("");
+      loadProject();
+    } catch (err: any) {
+      setDomainErr(String(err?.message || err));
+    } finally {
+      setDomainSaving(false);
+    }
+  }
+
+  async function handleRemoveDomain() {
+    setDomainSaving(true);
+    setDomainErr(null);
+    try {
+      const res = await fetch(`/api/projects/${params.id}/domain`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.detail || data.error);
+      loadProject();
+    } catch (err: any) {
+      setDomainErr(String(err?.message || err));
+    } finally {
+      setDomainSaving(false);
+    }
+  }
+
+  async function handleDeleteProject() {
+    if (!deleteConfirming) {
+      setDeleteConfirming(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${params.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      router.push("/");
+    } catch (err: any) {
+      alert(String(err?.message || err));
+      setDeleting(false);
+      setDeleteConfirming(false);
     }
   }
 
@@ -243,7 +489,21 @@ export default function ProjectDetailPage() {
         >
           <ArrowLeft size={16} strokeWidth={2} />
         </button>
-        <LanguageToggle />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleDeleteProject}
+            disabled={deleting}
+            className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition active:scale-95 ${
+              deleteConfirming
+                ? "border-accent-red/40 bg-accent-red/10 text-accent-red"
+                : "border-base-border bg-base-surface text-ink-faint"
+            }`}
+          >
+            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} strokeWidth={2} />}
+            {deleteConfirming && (deleting ? "" : t("delete_project_confirm"))}
+          </button>
+          <LanguageToggle />
+        </div>
       </header>
 
       <h1 className="mb-1 truncate font-display text-xl font-semibold text-ink">{project.name}</h1>
@@ -313,7 +573,7 @@ export default function ProjectDetailPage() {
         )}
       </section>
 
-      {/* Vercel deploy */}
+      {/* Vercel deploy (กด Deploy ซ้ำได้เรื่อยๆ = redeploy จาก ZIP เดิมในตัวอยู่แล้ว) */}
       <section className="mb-4 rounded-xl border border-base-border bg-base-surface p-4">
         <label className="mb-1.5 block text-xs font-medium text-ink-dim">{t("domain_label")}</label>
         <div className="mb-3 flex items-center rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5">
@@ -337,7 +597,8 @@ export default function ProjectDetailPage() {
             </>
           ) : (
             <>
-              <Triangle size={12} fill="currentColor" strokeWidth={0} /> {t("deploy_vercel")}
+              <Triangle size={12} fill="currentColor" strokeWidth={0} />
+              {vercelStatus === "success" ? t("redeploy_button") : t("deploy_vercel")}
             </>
           )}
         </button>
@@ -359,8 +620,13 @@ export default function ProjectDetailPage() {
         )}
       </section>
 
+      {/* Build log สด ระหว่าง deploy กำลังทำงาน */}
+      {vercelStatus === "loading" && (
+        <BuildLogPanel log={liveLog} source="vercel" title={t("live_log_title")} live />
+      )}
+
       {/* GitHub push */}
-      <section className="rounded-xl border border-base-border bg-base-surface p-4">
+      <section className="mb-4 rounded-xl border border-base-border bg-base-surface p-4">
         <label className="mb-1.5 block text-xs font-medium text-ink-dim">{t("repo_label")}</label>
         <div className="mb-3 rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5">
           <input
@@ -404,7 +670,197 @@ export default function ProjectDetailPage() {
         )}
       </section>
 
-      {buildLog && <BuildLogPanel log={buildLog} source={buildLogSource} />}
+      {buildLog && vercelStatus !== "loading" && <BuildLogPanel log={buildLog} source={buildLogSource} />}
+
+      {/* Rollback */}
+      <section className="mb-4 rounded-xl border border-base-border bg-base-surface p-4">
+        <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-dim">
+          <History size={13} /> {t("rollback_title")}
+        </p>
+        <p className="mb-3 text-[11px] text-ink-faint">{t("rollback_desc")}</p>
+
+        {vercelHistory.length === 0 ? (
+          <p className="text-xs text-ink-faint">{t("rollback_empty")}</p>
+        ) : (
+          <div className="space-y-2">
+            {vercelHistory.map((d, idx) => (
+              <div
+                key={d.id}
+                className="flex items-center justify-between gap-2 rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5"
+              >
+                <div className="min-w-0">
+                  <p className="truncate font-mono text-xs text-ink">{d.url}</p>
+                  <p className="text-[10px] text-ink-faint">{new Date(d.created_at).toLocaleString()}</p>
+                </div>
+                {idx === 0 ? (
+                  <span className="shrink-0 rounded-full border border-accent-mint/30 bg-accent-mint/10 px-2 py-1 text-[10px] text-accent-mint">
+                    {t("rollback_current")}
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => handleRollback(d.id)}
+                    disabled={rollbackLoadingId === d.id}
+                    className={`flex shrink-0 items-center gap-1 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition active:scale-95 ${
+                      rollbackConfirmId === d.id
+                        ? "border-accent-amber/40 bg-accent-amber/10 text-accent-amber"
+                        : "border-base-border bg-base-surface text-ink-dim"
+                    }`}
+                  >
+                    {rollbackLoadingId === d.id ? (
+                      <Loader2 size={11} className="animate-spin" />
+                    ) : (
+                      <History size={11} />
+                    )}
+                    {rollbackConfirmId === d.id ? t("rollback_confirm") : t("rollback_button")}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rollbackMsg && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-accent-mint">
+            <CheckCircle2 size={13} /> {rollbackMsg}
+          </p>
+        )}
+        {rollbackErr && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-accent-red">
+            <XCircle size={13} /> {rollbackErr}
+          </p>
+        )}
+      </section>
+
+      {/* Custom domain */}
+      <section className="mb-4 rounded-xl border border-base-border bg-base-surface p-4">
+        <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-dim">
+          <Globe size={13} /> {t("custom_domain_title")}
+        </p>
+        <p className="mb-3 text-[11px] text-ink-faint">{t("custom_domain_desc")}</p>
+
+        {project.custom_domain ? (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5">
+            <span className="truncate font-mono text-sm text-ink">{project.custom_domain}</span>
+            <button
+              onClick={handleRemoveDomain}
+              disabled={domainSaving}
+              className="flex shrink-0 items-center gap-1 rounded-md border border-base-border bg-base-surface px-2.5 py-1.5 text-[11px] text-accent-red active:scale-95 transition"
+            >
+              {domainSaving ? <Loader2 size={11} className="animate-spin" /> : <Trash2 size={11} />}
+              {t("custom_domain_remove_button")}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <input
+              value={domainInput}
+              onChange={(e) => setDomainInput(e.target.value)}
+              placeholder={t("custom_domain_placeholder")}
+              className="min-w-0 flex-1 rounded-lg border border-base-border bg-base-surface2 px-3 py-2.5 font-mono text-sm text-ink placeholder:text-ink-faint focus:outline-none"
+            />
+            <button
+              onClick={handleAddDomain}
+              disabled={domainSaving || !domainInput.trim()}
+              className="flex shrink-0 items-center gap-1 rounded-lg bg-ink px-3 py-2.5 text-xs font-medium text-base-bg disabled:opacity-40 active:scale-95 transition"
+            >
+              {domainSaving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />}
+              {t("custom_domain_add_button")}
+            </button>
+          </div>
+        )}
+        {domainErr && (
+          <p className="mt-3 flex items-center gap-1.5 text-xs text-accent-red">
+            <XCircle size={13} /> {domainErr}
+          </p>
+        )}
+      </section>
+
+      {/* Environment variables */}
+      <section className="mb-4 rounded-xl border border-base-border bg-base-surface p-4">
+        <p className="mb-1 flex items-center gap-1.5 text-xs font-medium text-ink-dim">
+          <KeyRound size={13} /> {t("env_vars_title")}
+        </p>
+        <p className="mb-3 text-[11px] text-ink-faint">{t("env_vars_desc")}</p>
+
+        {envNotDeployed ? (
+          <p className="text-xs text-ink-faint">{t("env_vars_not_deployed")}</p>
+        ) : (
+          <>
+            {envs === null ? (
+              <Loader2 size={15} className="animate-spin text-ink-faint" />
+            ) : (
+              <div className="mb-3 space-y-2">
+                {envs.map((e) => (
+                  <div
+                    key={e.id}
+                    className="flex items-center justify-between gap-2 rounded-lg border border-base-border bg-base-surface2 px-3 py-2"
+                  >
+                    <span className="truncate font-mono text-xs text-ink">{e.key}</span>
+                    {envEditingId === e.id ? (
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <input
+                          value={envEditValue}
+                          onChange={(ev) => setEnvEditValue(ev.target.value)}
+                          placeholder={t("env_value_placeholder")}
+                          className="w-28 rounded-md border border-base-border bg-base-bg px-2 py-1 font-mono text-xs text-ink focus:outline-none"
+                        />
+                        <button
+                          onClick={() => handleSaveEnvEdit(e.id)}
+                          disabled={envSaving}
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-accent-mint/30 bg-accent-mint/10 text-accent-mint active:scale-95 transition"
+                        >
+                          <Check size={12} />
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex shrink-0 items-center gap-1.5">
+                        <button
+                          onClick={() => {
+                            setEnvEditingId(e.id);
+                            setEnvEditValue("");
+                          }}
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-base-border bg-base-surface text-ink-faint active:scale-95 transition"
+                        >
+                          <Pencil size={11} />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteEnv(e.id)}
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-base-border bg-base-surface text-accent-red active:scale-95 transition"
+                        >
+                          <Trash2 size={11} />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {envs.length === 0 && <p className="text-xs text-ink-faint">—</p>}
+              </div>
+            )}
+
+            <div className="flex items-center gap-1.5">
+              <input
+                value={newEnvKey}
+                onChange={(e) => setNewEnvKey(e.target.value)}
+                placeholder={t("env_key_placeholder")}
+                className="min-w-0 flex-1 rounded-lg border border-base-border bg-base-surface2 px-2.5 py-2 font-mono text-xs text-ink placeholder:text-ink-faint focus:outline-none"
+              />
+              <input
+                value={newEnvValue}
+                onChange={(e) => setNewEnvValue(e.target.value)}
+                placeholder={t("env_value_placeholder")}
+                className="min-w-0 flex-1 rounded-lg border border-base-border bg-base-surface2 px-2.5 py-2 font-mono text-xs text-ink placeholder:text-ink-faint focus:outline-none"
+              />
+              <button
+                onClick={handleAddEnv}
+                disabled={envSaving || !newEnvKey.trim() || !newEnvValue}
+                className="flex shrink-0 items-center justify-center rounded-lg bg-ink p-2 text-base-bg disabled:opacity-40 active:scale-95 transition"
+              >
+                {envSaving ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+              </button>
+            </div>
+          </>
+        )}
+      </section>
     </main>
   );
 }

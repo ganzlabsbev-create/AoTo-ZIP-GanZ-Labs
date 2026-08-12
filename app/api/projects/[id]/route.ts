@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getProject, getDeploymentsForProject } from "@/lib/db";
+import { getProject, getDeploymentsForProject, deleteProject } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -17,4 +17,14 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     },
     deployments,
   });
+}
+
+/** ลบโปรเจกต์ออกจากประวัติในแอปนี้ (ไม่ลบ deployment จริงบน Vercel/repo บน GitHub นะ แค่เอาออกจาก Recent Projects) */
+export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
+  const project = await getProject(params.id);
+  if (!project) {
+    return NextResponse.json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+  await deleteProject(params.id);
+  return NextResponse.json({ ok: true });
 }

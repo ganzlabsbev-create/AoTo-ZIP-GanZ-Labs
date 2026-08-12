@@ -188,3 +188,143 @@ function sanitizeProjectName(name: string): string {
     .replace(/^-+|-+$/g, "")
     .slice(0, 52);
 }
+
+/**
+ * Rollback: ย้าย alias (โดเมนหลักที่ deploy อยู่) ให้ไปชี้ที่ deployment เก่าแทน
+ * ใช้ Vercel Aliases API ตรงๆ ไม่ต้องพึ่งว่า project ผูก git อยู่หรือไม่
+ * (ต้องรู้ vercel deployment id เดิมที่เก็บไว้ตอน deploy ครั้งนั้นๆ)
+ */
+export async function rollbackToDeployment(
+  vercelDeploymentId: string,
+  alias: string
+): Promise<{ alias: string }> {
+  const res = await fetch(withTeam(`${API}/v2/deployments/${vercelDeploymentId}/aliases`), {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ alias }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Rollback failed: ${text}`);
+  }
+  const data = await res.json();
+  return { alias: data.alias ?? alias };
+}
+
+/** หา Vercel Project ตามชื่อ (ชื่อเดียวกับที่ใช้ตอน deploy => sanitize แบบเดียวกัน) คืน null ถ้ายังไม่เคย deploy */
+export async function getVercelProjectByName(name: string): Promise<{ id: string; name: string } | null> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${sanitizeProjectName(name)}`), {
+    headers: authHeaders(),
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Get project failed: ${text}`);
+  }
+  const data = await res.json();
+  return { id: data.id, name: data.name };
+}
+
+export interface VercelEnvVar {
+  id: string;
+  key: string;
+  value?: string;
+  target: string[];
+}
+
+/** ดึงรายการ env var ของ project (ค่า encrypted จะไม่คืน value กลับมา เป็นปกติของ Vercel API) */
+export async function listEnvVars(projectId: string): Promise<VercelEnvVar[]> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}/env`), {
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`List env vars failed: ${text}`);
+  }
+  const data = await res.json();
+  return (data.envs ?? []).map((e: any) => ({ id: e.id, key: e.key, target: e.target ?? [] }));
+}
+
+/** เพิ่ม env var ใหม่ให้ project (ใช้ production+preview+development ทั้งหมดเพื่อความง่าย) */
+export async function createEnvVar(projectId: string, key: string, value: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v10/projects/${projectId}/env`), {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      key,
+      value,
+      type: "encrypted",
+      target: ["production", "preview", "development"],
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Create env var failed: ${text}`);
+  }
+}
+
+/** แก้ค่า env var เดิม (ต้องมี envId จาก listEnvVars ก่อน) */
+export async function updateEnvVar(projectId: string, envId: string, value: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}/env/${envId}`), {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ value }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Update env var failed: ${text}`);
+  }
+}
+
+export async function deleteEnvVar(projectId: string, envId: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}/env/${envId}`), {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Delete env var failed: ${text}`);
+  }
+}
+
+/** ผูก custom domain เข้ากับ project (domain ต้องชี้ DNS มาที่ Vercel เองนอกแอปนี้ก่อน/หลัง) */
+export async function addDomainToProject(
+  projectId: string,
+  domain: string
+): Promise<{ name: string; verified: boolean }> {
+  const res = await fetch(withTeam(`${API}/v10/projects/${projectId}/domains`), {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ name: domain }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(`Add domain failed: ${data?.error?.message || JSON.stringify(data)}`);
+  }
+  return { name: data.name, verified: Boolean(data.verified) };
+}
+
+export async function removeDomainFromProject(projectId: string, domain: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}/domains/${domain}`), {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Remove domain failed: ${text}`);
+  }
+}
+
+/** อ่านสถานะ deployment ปัจจุบัน + build log ที่มีอยู่ตอนนี้ (ใช้ poll แบบ non-blocking จากฝั่ง client เพื่อ stream log สด) */
+export async function getDeploymentStatus(
+  deploymentId: string
+): Promise<{ readyState: string; url: string; errorMessage: string | null }> {
+  const res = await fetch(withTeam(`${API}/v13/deployments/${deploymentId}`), {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `Get deployment status failed`);
+  }
+  return { readyState: data.readyState, url: data.url, errorMessage: data.errorMessage?.message ?? null };
+}
