@@ -237,7 +237,7 @@ export async function listVercelProjects(): Promise<
   let next: number | null | undefined = undefined;
 
   while (true) {
-    const qs = next ? `?limit=100&until=${next}` : "?limit=100";
+    const qs: string = next ? `?limit=100&until=${next}` : "?limit=100";
     const res = await fetch(withTeam(`${API}/v9/projects${qs}`), { headers: authHeaders() });
     if (!res.ok) {
       const text = await res.text();
