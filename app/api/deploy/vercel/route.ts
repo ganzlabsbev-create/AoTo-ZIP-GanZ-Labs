@@ -18,6 +18,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
   const projectId = body?.projectId as string | undefined;
   const domainName = (body?.domainName as string | undefined)?.trim();
+  const target = body?.target === "preview" ? "preview" : "production";
 
   if (!projectId || !domainName) {
     return NextResponse.json({ ok: false, error: "missing_fields" }, { status: 400 });
@@ -52,7 +53,7 @@ export async function POST(req: NextRequest) {
       throw new Error("ไม่พบไฟล์ในโปรเจกต์นี้");
     }
 
-    const created = await deployToVercel(extractDir, files, domainName);
+    const created = await deployToVercel(extractDir, files, domainName, target);
     await updateDeployment(deploymentId, { vercel_deployment_id: created.id });
 
     return NextResponse.json({ ok: true, deploymentId, vercelDeploymentId: created.id });

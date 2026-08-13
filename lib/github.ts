@@ -188,6 +188,34 @@ export async function getRepoTree(
   }
 }
 
+/** ดึงเนื้อหาไฟล์เดี่ยวๆ เป็น text (ใช้เปิดดู/แก้ไขในหน้า Manage ก่อน commit) */
+export async function getFileContent(
+  owner: string,
+  repo: string,
+  filePath: string,
+  branch: string
+): Promise<string> {
+  const data = await gh(
+    `/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`
+  );
+  if (Array.isArray(data) || data.type !== "file" || !data.content) {
+    throw new Error("Not a readable file");
+  }
+  return Buffer.from(data.content, "base64").toString("utf-8");
+}
+
+/** ลบ repo จริงบน GitHub ถาวร (ต้อง token สิทธิ์ Administration: write ถึงจะลบได้ ไม่งั้น GitHub จะคืน 403) */
+export async function deleteRepo(owner: string, repo: string): Promise<void> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Delete repo failed: ${res.status} ${text}`);
+  }
+}
+
 export interface FileChange {
   path: string;
   action: "add" | "replace" | "delete";

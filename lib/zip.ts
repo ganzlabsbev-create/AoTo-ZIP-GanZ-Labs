@@ -2,7 +2,22 @@ import AdmZip from "adm-zip";
 import path from "path";
 import fs from "fs";
 
-const IGNORE_DIRS = new Set(["node_modules", ".git", ".next", "dist", "build", ".DS_Store"]);
+// กันไฟล์ที่ไม่ควรติดไปกับ deploy/commit: dependency folders, build output, และไฟล์ secret ทั่วไป
+const IGNORE_DIRS = new Set([
+  "node_modules",
+  ".git",
+  ".next",
+  "dist",
+  "build",
+  ".DS_Store",
+  ".env",
+  ".env.local",
+  ".env.development",
+  ".env.production",
+  ".vercel",
+  "__pycache__",
+  ".turbo",
+]);
 
 export interface TreeNode {
   name: string;

@@ -52,7 +52,8 @@ export interface VercelDeployResult {
 export async function deployToVercel(
   extractDir: string,
   relativeFiles: string[],
-  projectName: string
+  projectName: string,
+  target: "production" | "preview" = "production"
 ): Promise<VercelDeployResult> {
   const files: Array<{ file: string; sha: string; size: number }> = [];
 
@@ -69,7 +70,7 @@ export async function deployToVercel(
     body: JSON.stringify({
       name: sanitizeProjectName(projectName),
       files,
-      target: "production",
+      target,
       projectSettings: {
         framework: null, // ให้ Vercel auto-detect เอง
       },
@@ -223,6 +224,68 @@ export async function getVercelProjectByName(name: string): Promise<{ id: string
   }
   const data = await res.json();
   return { id: data.id, name: data.name };
+}
+
+/**
+ * ดึงรายชื่อ Vercel project ทั้งหมดในบัญชี/team ที่ token เข้าถึงได้ (ไม่จำกัดแค่ที่ deploy ผ่านแอปนี้)
+ * ใช้สำหรับหน้า Manage — วนดึงทีละหน้าให้ครบเผื่อมีเป็นสิบ/ร้อยโปรเจกต์
+ */
+export async function listVercelProjects(): Promise<
+  { id: string; name: string; url: string | null; updatedAt: number | null }[]
+> {
+  const results: any[] = [];
+  let next: number | null | undefined = undefined;
+
+  while (true) {
+    const qs = next ? `?limit=100&until=${next}` : "?limit=100";
+    const res = await fetch(withTeam(`${API}/v9/projects${qs}`), { headers: authHeaders() });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(`List projects failed: ${text}`);
+    }
+    const data = await res.json();
+    const projects = data.projects ?? [];
+    results.push(...projects);
+    next = data.pagination?.next ?? null;
+    if (!next || projects.length === 0) break;
+  }
+
+  return results.map((p) => ({
+    id: p.id,
+    name: p.name,
+    url: p.targets?.production?.alias?.[0] || p.latestDeployments?.[0]?.url || null,
+    updatedAt: p.updatedAt ?? null,
+  }));
+}
+
+/** ลบ Vercel project จริง (ลบทุก deployment ที่ผูกกับ project นี้ไปด้วย — ทำลายถาวร) */
+export async function deleteVercelProject(projectId: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Delete project failed: ${text}`);
+  }
+}
+
+/** หา Vercel Project ตาม id ตรงๆ (ใช้ในหน้า Manage ที่ทำงานกับ id อยู่แล้ว ไม่ต้องแปลงชื่อกลับไปกลับมา) */
+export async function getVercelProjectById(
+  id: string
+): Promise<{ id: string; name: string; url: string | null } | null> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${id}`), { headers: authHeaders() });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Get project failed: ${text}`);
+  }
+  const data = await res.json();
+  return {
+    id: data.id,
+    name: data.name,
+    url: data.targets?.production?.alias?.[0] || data.latestDeployments?.[0]?.url || null,
+  };
 }
 
 export interface VercelEnvVar {

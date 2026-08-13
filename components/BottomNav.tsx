@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Settings } from "lucide-react";
+import { Home, Settings, Wrench } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 
 export default function BottomNav() {
@@ -11,6 +11,7 @@ export default function BottomNav() {
 
   const tabs = [
     { href: "/", label: t("nav_home"), icon: Home },
+    { href: "/manage", label: t("nav_manage"), icon: Wrench },
     { href: "/settings", label: t("nav_settings"), icon: Settings },
   ];
 
@@ -18,7 +19,7 @@ export default function BottomNav() {
     <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-base-border bg-base-bg/85 backdrop-blur-md">
       <div className="mx-auto flex max-w-md items-stretch">
         {tabs.map(({ href, label, icon: Icon }) => {
-          const active = pathname === href;
+          const active = href === "/" ? pathname === "/" : pathname.startsWith(href);
           return (
             <button
               key={href}

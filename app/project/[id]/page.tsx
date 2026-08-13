@@ -21,6 +21,7 @@ import {
   Trash2,
   Pencil,
   Check,
+  X,
 } from "lucide-react";
 import { useLang } from "@/lib/i18n-context";
 import LanguageToggle from "@/components/LanguageToggle";
@@ -115,6 +116,7 @@ export default function ProjectDetailPage() {
   const [deployments, setDeployments] = useState<any[]>([]);
 
   const [domainName, setDomainName] = useState("");
+  const [deployTarget, setDeployTarget] = useState<"production" | "preview">("production");
   const [repoName, setRepoName] = useState("");
 
   const [vercelStatus, setVercelStatus] = useState<DeployStatus>("idle");
@@ -158,7 +160,8 @@ export default function ProjectDetailPage() {
   const [domainErr, setDomainErr] = useState<string | null>(null);
 
   // delete project
-  const [deleteConfirming, setDeleteConfirming] = useState(false);
+  const [deleteChoosing, setDeleteChoosing] = useState(false);
+  const [deleteConfirmingReal, setDeleteConfirmingReal] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
   function loadProject() {
@@ -249,7 +252,7 @@ export default function ProjectDetailPage() {
       const res = await fetch("/api/deploy/vercel", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ projectId: params.id, domainName }),
+        body: JSON.stringify({ projectId: params.id, domainName, target: deployTarget }),
       });
       const data = await res.json();
       if (!data.ok) {
@@ -454,11 +457,7 @@ export default function ProjectDetailPage() {
     }
   }
 
-  async function handleDeleteProject() {
-    if (!deleteConfirming) {
-      setDeleteConfirming(true);
-      return;
-    }
+  async function handleDeleteHistoryOnly() {
     setDeleting(true);
     try {
       const res = await fetch(`/api/projects/${params.id}`, { method: "DELETE" });
@@ -468,7 +467,26 @@ export default function ProjectDetailPage() {
     } catch (err: any) {
       alert(String(err?.message || err));
       setDeleting(false);
-      setDeleteConfirming(false);
+      setDeleteChoosing(false);
+    }
+  }
+
+  async function handleDeleteReal() {
+    if (!deleteConfirmingReal) {
+      setDeleteConfirmingReal(true);
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/projects/${params.id}?real=1`, { method: "DELETE" });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      router.push("/");
+    } catch (err: any) {
+      alert(String(err?.message || err));
+      setDeleting(false);
+      setDeleteChoosing(false);
+      setDeleteConfirmingReal(false);
     }
   }
 
@@ -490,18 +508,55 @@ export default function ProjectDetailPage() {
           <ArrowLeft size={16} strokeWidth={2} />
         </button>
         <div className="flex items-center gap-2">
-          <button
-            onClick={handleDeleteProject}
-            disabled={deleting}
-            className={`flex h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition active:scale-95 ${
-              deleteConfirming
-                ? "border-accent-red/40 bg-accent-red/10 text-accent-red"
-                : "border-base-border bg-base-surface text-ink-faint"
-            }`}
-          >
-            {deleting ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} strokeWidth={2} />}
-            {deleteConfirming && (deleting ? "" : t("delete_project_confirm"))}
-          </button>
+          {!deleteChoosing ? (
+            <button
+              onClick={() => setDeleteChoosing(true)}
+              className="flex h-9 items-center gap-1.5 rounded-full border border-base-border bg-base-surface px-3 text-xs font-medium text-ink-faint transition active:scale-95"
+            >
+              <Trash2 size={13} strokeWidth={2} />
+            </button>
+          ) : (
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={handleDeleteHistoryOnly}
+                disabled={deleting}
+                className="flex h-9 items-center gap-1 rounded-full border border-base-border bg-base-surface px-2.5 text-[11px] font-medium text-ink-faint transition active:scale-95"
+              >
+                {deleting && !deleteConfirmingReal ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : (
+                  t("delete_btn_history_short")
+                )}
+              </button>
+              <button
+                onClick={handleDeleteReal}
+                disabled={deleting}
+                className={`flex h-9 items-center gap-1 rounded-full border px-2.5 text-[11px] font-medium transition active:scale-95 ${
+                  deleteConfirmingReal
+                    ? "border-accent-red/40 bg-accent-red/10 text-accent-red"
+                    : "border-accent-red/25 bg-accent-red/5 text-accent-red/80"
+                }`}
+              >
+                {deleting && deleteConfirmingReal ? (
+                  <Loader2 size={12} className="animate-spin" />
+                ) : deleteConfirmingReal ? (
+                  t("delete_btn_confirm_short")
+                ) : (
+                  t("delete_btn_real_short")
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setDeleteChoosing(false);
+                  setDeleteConfirmingReal(false);
+                }}
+                disabled={deleting}
+                className="flex h-9 w-9 items-center justify-center rounded-full border border-base-border bg-base-surface text-ink-faint transition active:scale-95"
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            </div>
+          )}
           <LanguageToggle />
         </div>
       </header>
@@ -584,6 +639,28 @@ export default function ProjectDetailPage() {
             className="min-w-0 flex-1 bg-transparent font-mono text-sm text-ink placeholder:text-ink-faint focus:outline-none"
           />
           <span className="shrink-0 font-mono text-xs text-ink-faint">.vercel.app</span>
+        </div>
+
+        <label className="mb-1.5 block text-xs font-medium text-ink-dim">{t("deploy_target_label")}</label>
+        <div className="mb-3 flex gap-2 rounded-lg border border-base-border bg-base-surface2 p-1">
+          <button
+            type="button"
+            onClick={() => setDeployTarget("production")}
+            className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+              deployTarget === "production" ? "bg-base-surface text-ink shadow-card" : "text-ink-faint"
+            }`}
+          >
+            {t("deploy_target_production")}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDeployTarget("preview")}
+            className={`flex-1 rounded-md py-1.5 text-xs font-medium transition ${
+              deployTarget === "preview" ? "bg-base-surface text-ink shadow-card" : "text-ink-faint"
+            }`}
+          >
+            {t("deploy_target_preview")}
+          </button>
         </div>
 
         <button

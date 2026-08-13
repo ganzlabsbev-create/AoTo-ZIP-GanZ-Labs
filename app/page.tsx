@@ -25,11 +25,11 @@ export default function HomePage() {
     loadProjects();
   }, []);
 
-  async function handleDelete(id: string) {
+  async function handleDelete(id: string, real: boolean) {
     // ตัดออกจาก UI ก่อนเลยให้รู้สึกไว แล้วค่อยยิงลบจริง (ถ้า error ค่อยโหลดใหม่)
     setProjects((prev) => (prev ? prev.filter((p) => p.id !== id) : prev));
     try {
-      const res = await fetch(`/api/projects/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/projects/${id}${real ? "?real=1" : ""}`, { method: "DELETE" });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error);
     } catch {
