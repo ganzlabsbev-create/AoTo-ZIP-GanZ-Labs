@@ -234,11 +234,10 @@ export async function listVercelProjects(): Promise<
   { id: string; name: string; url: string | null; updatedAt: number | null }[]
 > {
   const results: any[] = [];
-  let cursor: number | null = null;
-  let hasMore = true;
+  let next: number | null | undefined = undefined;
 
-  while (hasMore) {
-    const qs: string = cursor ? `?limit=100&until=${cursor}` : "?limit=100";
+  while (true) {
+    const qs = next ? `?limit=100&until=${next}` : "?limit=100";
     const res = await fetch(withTeam(`${API}/v9/projects${qs}`), { headers: authHeaders() });
     if (!res.ok) {
       const text = await res.text();
@@ -247,8 +246,8 @@ export async function listVercelProjects(): Promise<
     const data = await res.json();
     const projects = data.projects ?? [];
     results.push(...projects);
-    cursor = data.pagination?.next ?? null;
-    hasMore = Boolean(cursor) && projects.length > 0;
+    next = data.pagination?.next ?? null;
+    if (!next || projects.length === 0) break;
   }
 
   return results.map((p) => ({
@@ -309,8 +308,13 @@ export async function listEnvVars(projectId: string): Promise<VercelEnvVar[]> {
   return (data.envs ?? []).map((e: any) => ({ id: e.id, key: e.key, target: e.target ?? [] }));
 }
 
-/** เพิ่ม env var ใหม่ให้ project (ใช้ production+preview+development ทั้งหมดเพื่อความง่าย) */
-export async function createEnvVar(projectId: string, key: string, value: string): Promise<void> {
+/** เพิ่ม env var ใหม่ให้ project — ระบุ target ได้ (ไม่ระบุ = ใช้ทั้ง 3 target เหมือนเดิม) */
+export async function createEnvVar(
+  projectId: string,
+  key: string,
+  value: string,
+  target: string[] = ["production", "preview", "development"]
+): Promise<void> {
   const res = await fetch(withTeam(`${API}/v10/projects/${projectId}/env`), {
     method: "POST",
     headers: { ...authHeaders(), "Content-Type": "application/json" },
@@ -318,7 +322,7 @@ export async function createEnvVar(projectId: string, key: string, value: string
       key,
       value,
       type: "encrypted",
-      target: ["production", "preview", "development"],
+      target: target.length > 0 ? target : ["production", "preview", "development"],
     }),
   });
   if (!res.ok) {
@@ -391,4 +395,253 @@ export async function getDeploymentStatus(
     throw new Error(data?.error?.message || `Get deployment status failed`);
   }
   return { readyState: data.readyState, url: data.url, errorMessage: data.errorMessage?.message ?? null };
+}
+
+// ============================================================================
+// ส่วนขยายสำหรับหน้า Manage แบบเต็ม (deployments list/promote/redeploy/cancel,
+// project settings, deployment protection, env target, domain redirect)
+// ============================================================================
+
+export interface VercelDeploymentListItem {
+  uid: string;
+  url: string;
+  name: string;
+  target: string | null;
+  state: string; // READY / BUILDING / QUEUED / ERROR / CANCELED
+  created: number;
+}
+
+/** ดึงรายการ deployment ทั้งหมดของ project (ไม่ใช่แค่ล่าสุด) เรียงใหม่สุดก่อน */
+export async function listDeployments(projectId: string, limit = 50): Promise<VercelDeploymentListItem[]> {
+  const res = await fetch(withTeam(`${API}/v6/deployments?projectId=${projectId}&limit=${limit}`), {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `List deployments failed`);
+  }
+  return (data.deployments ?? []).map((d: any) => ({
+    uid: d.uid,
+    url: d.url,
+    name: d.name,
+    target: d.target ?? null,
+    state: d.state,
+    created: d.created ?? d.createdAt ?? 0,
+  }));
+}
+
+/** เลื่อน deployment (มักเป็น preview) ขึ้นเป็น production */
+export async function promoteDeployment(projectId: string, deploymentId: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v10/projects/${projectId}/promote/${deploymentId}`), {
+    method: "POST",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Promote deployment failed: ${text}`);
+  }
+}
+
+/** สร้าง deployment ใหม่โดยใช้ source เดิมของ deployment ที่ระบุ (เทียบเท่าปุ่ม Redeploy บนเว็บ Vercel) */
+export async function redeployDeployment(
+  deploymentId: string,
+  name: string,
+  target: "production" | "preview" = "production"
+): Promise<VercelDeployResult> {
+  const res = await fetch(withTeam(`${API}/v13/deployments`), {
+    method: "POST",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ name, deploymentId, target }),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `Redeploy failed`);
+  }
+  return { id: data.id, url: data.url, readyState: data.readyState };
+}
+
+/** ยกเลิก build ที่กำลัง QUEUED/BUILDING อยู่ */
+export async function cancelDeployment(deploymentId: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v12/deployments/${deploymentId}/cancel`), {
+    method: "PATCH",
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Cancel deployment failed: ${text}`);
+  }
+}
+
+/** ลบ deployment ทีละตัว (ต่างจากลบทั้ง project) */
+export async function deleteDeploymentById(deploymentId: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v13/deployments/${deploymentId}`), {
+    method: "DELETE",
+    headers: authHeaders(),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Delete deployment failed: ${text}`);
+  }
+}
+
+export interface VercelProjectSettings {
+  buildCommand: string | null;
+  outputDirectory: string | null;
+  installCommand: string | null;
+  devCommand: string | null;
+  rootDirectory: string | null;
+  framework: string | null;
+  nodeVersion: string | null;
+  productionBranch: string | null;
+  autoDeployEnabled: boolean;
+}
+
+/** อ่าน build/dev settings + node version + production branch + สถานะ auto-deploy ปัจจุบันของ project */
+export async function getProjectSettings(projectId: string): Promise<VercelProjectSettings> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), { headers: authHeaders() });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `Get project settings failed`);
+  }
+  return {
+    buildCommand: data.buildCommand ?? null,
+    outputDirectory: data.outputDirectory ?? null,
+    installCommand: data.installCommand ?? null,
+    devCommand: data.devCommand ?? null,
+    rootDirectory: data.rootDirectory ?? null,
+    framework: data.framework ?? null,
+    nodeVersion: data.nodeVersion ?? null,
+    productionBranch: data.link?.productionBranch ?? null,
+    // Vercel ไม่มี flag ตรงๆ ชื่อ "auto deploy off" — ปิด auto-deploy จาก git ทำผ่านการตั้ง
+    // git.deploymentEnabled = false ต่อ branch ทั้งหมด ถ้าไม่มี key นี้ถือว่ายังเปิดอยู่ (ค่า default)
+    autoDeployEnabled: data.git?.deploymentEnabled?.[data.link?.productionBranch ?? ""] !== false,
+  };
+}
+
+/** แก้ build/dev settings ต่างๆ ของ project (ส่งเฉพาะ field ที่เปลี่ยน) */
+export async function updateProjectSettings(
+  projectId: string,
+  patch: Partial<{
+    buildCommand: string | null;
+    outputDirectory: string | null;
+    installCommand: string | null;
+    devCommand: string | null;
+    rootDirectory: string | null;
+    framework: string | null;
+    nodeVersion: string;
+  }>
+): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Update project settings failed: ${text}`);
+  }
+}
+
+/** เปลี่ยน Production Branch ของ project */
+export async function setProductionBranch(projectId: string, branch: string): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ link: { productionBranch: branch } }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Set production branch failed: ${text}`);
+  }
+}
+
+/**
+ * เปิด/ปิด auto-deploy จาก git push สำหรับ production branch ปัจจุบัน
+ * หมายเหตุ: field นี้ (git.deploymentEnabled) มาจาก Vercel REST API และอาจเปลี่ยนชื่อ/รูปแบบได้
+ * ถ้า Vercel เปลี่ยน API ในอนาคต ให้ตรวจสอบกับเอกสารล่าสุดอีกครั้ง
+ */
+export async function setAutoDeployEnabled(
+  projectId: string,
+  branch: string,
+  enabled: boolean
+): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ git: { deploymentEnabled: { [branch]: enabled } } }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Toggle auto-deploy failed: ${text}`);
+  }
+}
+
+/** อ่านสถานะ Deployment Protection (password gate ของ preview deployments) ปัจจุบัน */
+export async function getDeploymentProtection(
+  projectId: string
+): Promise<{ enabled: boolean; hasPassword: boolean }> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), { headers: authHeaders() });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `Get protection status failed`);
+  }
+  const protection = data.passwordProtection;
+  return { enabled: Boolean(protection), hasPassword: Boolean(protection?.deploymentType) };
+}
+
+/** ตั้ง/ถอด password gate ของ preview deployments */
+export async function setDeploymentProtection(
+  projectId: string,
+  password: string | null
+): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}`), {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({
+      passwordProtection: password ? { deploymentType: "preview", password } : null,
+    }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Set deployment protection failed: ${text}`);
+  }
+}
+
+export interface VercelDomainItem {
+  name: string;
+  verified: boolean;
+  redirect: string | null;
+}
+
+/** ดึงรายการ domain ทั้งหมดที่ผูกกับ project นี้ */
+export async function listDomainsForProject(projectId: string): Promise<VercelDomainItem[]> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}/domains`), {
+    headers: authHeaders(),
+  });
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error?.message || `List domains failed`);
+  }
+  return (data.domains ?? []).map((d: any) => ({
+    name: d.name,
+    verified: Boolean(d.verified),
+    redirect: d.redirect ?? null,
+  }));
+}
+
+/** ตั้งให้ domain นี้ redirect ไปยัง domain อื่น (ส่ง null เพื่อยกเลิก redirect) */
+export async function setDomainRedirect(
+  projectId: string,
+  domain: string,
+  redirectTo: string | null
+): Promise<void> {
+  const res = await fetch(withTeam(`${API}/v9/projects/${projectId}/domains/${domain}`), {
+    method: "PATCH",
+    headers: { ...authHeaders(), "Content-Type": "application/json" },
+    body: JSON.stringify({ redirect: redirectTo, redirectStatusCode: redirectTo ? 307 : null }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Set domain redirect failed: ${text}`);
+  }
 }

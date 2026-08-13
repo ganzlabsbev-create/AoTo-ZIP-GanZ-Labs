@@ -23,11 +23,12 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   const body = await req.json().catch(() => null);
   const key = (body?.key as string | undefined)?.trim();
   const value = body?.value as string | undefined;
+  const target = Array.isArray(body?.target) && body.target.length > 0 ? body.target : undefined;
   if (!key || value === undefined) {
     return NextResponse.json({ ok: false, error: "missing_fields" }, { status: 400 });
   }
   try {
-    await createEnvVar(params.id, key, value);
+    await createEnvVar(params.id, key, value, target);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(

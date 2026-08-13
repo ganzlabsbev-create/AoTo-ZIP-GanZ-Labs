@@ -303,3 +303,303 @@ export async function commitFileChanges(
 
   return `https://github.com/${owner}/${repo}/commit/${commit.sha}`;
 }
+
+// ============================================================================
+// ส่วนขยายสำหรับหน้า Manage แบบเต็ม (branches, repo settings, releases, collaborators)
+// ============================================================================
+
+export interface BranchItem {
+  name: string;
+  isDefault: boolean;
+  protected: boolean;
+}
+
+/** ดึงรายชื่อ branch ทั้งหมดของ repo พร้อมระบุว่าอันไหนคือ default */
+export async function listBranches(owner: string, repo: string): Promise<BranchItem[]> {
+  const repoInfo = await gh(`/repos/${owner}/${repo}`);
+  const defaultBranch = repoInfo.default_branch;
+
+  const perPage = 100;
+  const results: any[] = [];
+  let page = 1;
+  while (true) {
+    const data = await gh(`/repos/${owner}/${repo}/branches?per_page=${perPage}&page=${page}`);
+    if (!Array.isArray(data) || data.length === 0) break;
+    results.push(...data);
+    if (data.length < perPage) break;
+    page++;
+  }
+
+  return results.map((b) => ({
+    name: b.name,
+    isDefault: b.name === defaultBranch,
+    protected: Boolean(b.protected),
+  }));
+}
+
+/** สร้าง branch ใหม่จาก branch ต้นทางที่ระบุ */
+export async function createBranch(
+  owner: string,
+  repo: string,
+  newBranch: string,
+  fromBranch: string
+): Promise<void> {
+  const ref = await gh(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(fromBranch)}`);
+  await gh(`/repos/${owner}/${repo}/git/refs`, {
+    method: "POST",
+    body: JSON.stringify({ ref: `refs/heads/${newBranch}`, sha: ref.object.sha }),
+  });
+}
+
+/** ลบ branch (กันลบ default branch ไว้ที่ชั้น API route แล้ว แต่เช็คซ้ำที่นี่ด้วยเผื่อเรียกตรง) */
+export async function deleteBranch(owner: string, repo: string, branch: string): Promise<void> {
+  const repoInfo = await gh(`/repos/${owner}/${repo}`);
+  if (repoInfo.default_branch === branch) {
+    throw new Error("ลบ default branch ไม่ได้");
+  }
+  const res = await fetch(`${API}/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branch)}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Delete branch failed: ${res.status} ${text}`);
+  }
+}
+
+export interface BranchProtectionSettings {
+  requirePullRequestReviews: boolean;
+  requiredApprovingReviewCount: number;
+  requireStatusChecks: boolean;
+  requiredStatusCheckContexts: string[];
+}
+
+/** อ่านค่า branch protection rule ปัจจุบัน (คืนค่า default ปิดหมดถ้า branch ยังไม่มี protection เลย) */
+export async function getBranchProtection(
+  owner: string,
+  repo: string,
+  branch: string
+): Promise<BranchProtectionSettings> {
+  try {
+    const data = await gh(`/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}/protection`);
+    return {
+      requirePullRequestReviews: Boolean(data.required_pull_request_reviews),
+      requiredApprovingReviewCount: data.required_pull_request_reviews?.required_approving_review_count ?? 1,
+      requireStatusChecks: Boolean(data.required_status_checks),
+      requiredStatusCheckContexts: data.required_status_checks?.contexts ?? [],
+    };
+  } catch {
+    return {
+      requirePullRequestReviews: false,
+      requiredApprovingReviewCount: 1,
+      requireStatusChecks: false,
+      requiredStatusCheckContexts: [],
+    };
+  }
+}
+
+/** ตั้งค่า branch protection rule พื้นฐาน (require PR review / require status checks) */
+export async function setBranchProtection(
+  owner: string,
+  repo: string,
+  branch: string,
+  settings: BranchProtectionSettings
+): Promise<void> {
+  const res = await fetch(
+    `${API}/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}/protection`,
+    {
+      method: "PUT",
+      headers: headers(),
+      body: JSON.stringify({
+        required_status_checks: settings.requireStatusChecks
+          ? { strict: true, contexts: settings.requiredStatusCheckContexts }
+          : null,
+        enforce_admins: false,
+        required_pull_request_reviews: settings.requirePullRequestReviews
+          ? { required_approving_review_count: settings.requiredApprovingReviewCount }
+          : null,
+        restrictions: null,
+      }),
+    }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Set branch protection failed: ${res.status} ${text}`);
+  }
+}
+
+/** ปิด branch protection ทั้งหมดของ branch นั้น */
+export async function removeBranchProtection(owner: string, repo: string, branch: string): Promise<void> {
+  const res = await fetch(
+    `${API}/repos/${owner}/${repo}/branches/${encodeURIComponent(branch)}/protection`,
+    { method: "DELETE", headers: headers() }
+  );
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Remove branch protection failed: ${res.status} ${text}`);
+  }
+}
+
+export interface RepoSettings {
+  description: string | null;
+  topics: string[];
+  private: boolean;
+  archived: boolean;
+  defaultBranch: string;
+}
+
+/** อ่านค่า settings พื้นฐานของ repo */
+export async function getRepoSettings(owner: string, repo: string): Promise<RepoSettings> {
+  const data = await gh(`/repos/${owner}/${repo}`);
+  return {
+    description: data.description ?? null,
+    topics: data.topics ?? [],
+    private: Boolean(data.private),
+    archived: Boolean(data.archived),
+    defaultBranch: data.default_branch,
+  };
+}
+
+/** แก้ description ของ repo */
+export async function updateRepoDescription(owner: string, repo: string, description: string): Promise<void> {
+  await gh(`/repos/${owner}/${repo}`, { method: "PATCH", body: JSON.stringify({ description }) });
+}
+
+/** แก้ topics (tags) ของ repo — ใช้ endpoint แยกของ GitHub (ไม่ใช่ PATCH /repos ตรงๆ) */
+export async function updateRepoTopics(owner: string, repo: string, topics: string[]): Promise<void> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/topics`, {
+    method: "PUT",
+    headers: { ...headers(), Accept: "application/vnd.github.mercy-preview+json" },
+    body: JSON.stringify({ names: topics }),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Update topics failed: ${res.status} ${text}`);
+  }
+}
+
+/** เปลี่ยน visibility ของ repo (public/private) — กระทบสิทธิ์เข้าถึงทันที ต้อง confirm ก่อนเรียกจาก UI */
+export async function setRepoVisibility(owner: string, repo: string, isPrivate: boolean): Promise<void> {
+  await gh(`/repos/${owner}/${repo}`, { method: "PATCH", body: JSON.stringify({ private: isPrivate }) });
+}
+
+/** archive/unarchive repo */
+export async function setRepoArchived(owner: string, repo: string, archived: boolean): Promise<void> {
+  await gh(`/repos/${owner}/${repo}`, { method: "PATCH", body: JSON.stringify({ archived }) });
+}
+
+export interface ReleaseItem {
+  id: number;
+  tagName: string;
+  name: string | null;
+  body: string | null;
+  prerelease: boolean;
+  draft: boolean;
+  publishedAt: string | null;
+  htmlUrl: string;
+}
+
+/** ดึงรายการ releases ทั้งหมด (รวม tags ที่ยังไม่ได้ทำ release ด้วยแยกต่างหาก) */
+export async function listReleases(owner: string, repo: string): Promise<ReleaseItem[]> {
+  const data = await gh(`/repos/${owner}/${repo}/releases?per_page=50`);
+  if (!Array.isArray(data)) return [];
+  return data.map((r: any) => ({
+    id: r.id,
+    tagName: r.tag_name,
+    name: r.name,
+    body: r.body,
+    prerelease: Boolean(r.prerelease),
+    draft: Boolean(r.draft),
+    publishedAt: r.published_at,
+    htmlUrl: r.html_url,
+  }));
+}
+
+/** ดึงรายชื่อ tag ทั้งหมดของ repo (ใช้เป็นตัวเลือกตอนสร้าง release ใหม่จาก tag ที่มีอยู่) */
+export async function listTags(owner: string, repo: string): Promise<string[]> {
+  const data = await gh(`/repos/${owner}/${repo}/tags?per_page=50`);
+  if (!Array.isArray(data)) return [];
+  return data.map((t: any) => t.name);
+}
+
+/** สร้าง release ใหม่จาก tag (ถ้า tag ยังไม่มีอยู่ GitHub จะสร้าง tag ให้อัตโนมัติจาก target_commitish) */
+export async function createRelease(
+  owner: string,
+  repo: string,
+  tagName: string,
+  name: string,
+  body: string,
+  prerelease: boolean,
+  targetCommitish?: string
+): Promise<ReleaseItem> {
+  const data = await gh(`/repos/${owner}/${repo}/releases`, {
+    method: "POST",
+    body: JSON.stringify({
+      tag_name: tagName,
+      name,
+      body,
+      prerelease,
+      ...(targetCommitish ? { target_commitish: targetCommitish } : {}),
+    }),
+  });
+  return {
+    id: data.id,
+    tagName: data.tag_name,
+    name: data.name,
+    body: data.body,
+    prerelease: Boolean(data.prerelease),
+    draft: Boolean(data.draft),
+    publishedAt: data.published_at,
+    htmlUrl: data.html_url,
+  };
+}
+
+export interface CollaboratorItem {
+  login: string;
+  permission: "read" | "triage" | "write" | "maintain" | "admin";
+  avatarUrl: string;
+}
+
+/** ดึงรายชื่อคนที่มีสิทธิ์เข้าถึง repo ปัจจุบัน + ระดับสิทธิ์ */
+export async function listCollaborators(owner: string, repo: string): Promise<CollaboratorItem[]> {
+  const data = await gh(`/repos/${owner}/${repo}/collaborators?per_page=100&affiliation=direct`);
+  if (!Array.isArray(data)) return [];
+  return data.map((c: any) => ({
+    login: c.login,
+    permission: c.role_name ?? c.permissions?.admin
+      ? "admin"
+      : c.permissions?.maintain
+      ? "maintain"
+      : c.permissions?.push
+      ? "write"
+      : c.permissions?.triage
+      ? "triage"
+      : "read",
+    avatarUrl: c.avatar_url,
+  }));
+}
+
+/** เชิญ/เพิ่มคนใหม่เข้า repo ด้วย username + สิทธิ์ที่เลือก */
+export async function addCollaborator(
+  owner: string,
+  repo: string,
+  username: string,
+  permission: "pull" | "triage" | "push" | "maintain" | "admin"
+): Promise<void> {
+  await gh(`/repos/${owner}/${repo}/collaborators/${encodeURIComponent(username)}`, {
+    method: "PUT",
+    body: JSON.stringify({ permission }),
+  });
+}
+
+/** ลบคนออกจาก repo */
+export async function removeCollaborator(owner: string, repo: string, username: string): Promise<void> {
+  const res = await fetch(`${API}/repos/${owner}/${repo}/collaborators/${encodeURIComponent(username)}`, {
+    method: "DELETE",
+    headers: headers(),
+  });
+  if (!res.ok && res.status !== 404) {
+    const text = await res.text();
+    throw new Error(`Remove collaborator failed: ${res.status} ${text}`);
+  }
+}
