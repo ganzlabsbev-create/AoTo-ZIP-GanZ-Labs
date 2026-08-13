@@ -234,10 +234,11 @@ export async function listVercelProjects(): Promise<
   { id: string; name: string; url: string | null; updatedAt: number | null }[]
 > {
   const results: any[] = [];
-  let next: number | null | undefined = undefined;
+  let cursor: number | null = null;
+  let hasMore = true;
 
-  while (true) {
-    const qs = next ? `?limit=100&until=${next}` : "?limit=100";
+  while (hasMore) {
+    const qs: string = cursor ? `?limit=100&until=${cursor}` : "?limit=100";
     const res = await fetch(withTeam(`${API}/v9/projects${qs}`), { headers: authHeaders() });
     if (!res.ok) {
       const text = await res.text();
@@ -246,8 +247,8 @@ export async function listVercelProjects(): Promise<
     const data = await res.json();
     const projects = data.projects ?? [];
     results.push(...projects);
-    next = data.pagination?.next ?? null;
-    if (!next || projects.length === 0) break;
+    cursor = data.pagination?.next ?? null;
+    hasMore = Boolean(cursor) && projects.length > 0;
   }
 
   return results.map((p) => ({
