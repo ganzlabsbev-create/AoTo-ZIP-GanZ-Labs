@@ -1,5 +1,5 @@
 {
-  "name": "zip-deploy-tool",
+  "name": "zip-deploy-tool", 
   "version": "1.0.0",
   "private": true,
   "scripts": {
