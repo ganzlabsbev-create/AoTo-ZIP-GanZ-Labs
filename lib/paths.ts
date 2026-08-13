@@ -10,3 +10,4 @@ import { nanoid } from "nanoid";
 export function newExtractDir(projectId: string): string {
   return path.join(os.tmpdir(), "zdt-projects", `${projectId}-${nanoid(6)}`);
 }
+ 
